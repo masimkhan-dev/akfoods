@@ -49,9 +49,9 @@ const Billing = () => {
     content: () => receiptRef.current,
     pageStyle: `
       @media print {
-        /* Force body to 80mm width and remove margins */
+        /* Force body to 58mm width for small thermal printers */
         body, html {
-          width: 80mm !important;
+          width: 58mm !important;
           margin: 0 !important;
           padding: 0 !important;
           background: #fff !important;
@@ -59,29 +59,27 @@ const Billing = () => {
           color-adjust: exact !important;
         }
 
-        /* All text black, high contrast */
+        /* All text solid black for thermal heat transfer */
         * {
           color: #000 !important;
-          background: #fff !important;
-          font-weight: normal !important;
+          text-shadow: none !important;
+          box-shadow: none !important;
         }
 
         /* Receipt container styling */
         .receipt-container {
-          width: 80mm;
-          max-width: 80mm;
-          padding: 5px 0;
-          font-family: monospace, Arial, sans-serif;
-          font-size: 12px;
-          line-height: 1.4;
+          width: 58mm;
+          max-width: 58mm;
+          padding: 2px 0;
+          font-family: 'Courier New', Courier, monospace !important;
+          font-size: 11px;
+          line-height: 1.2;
         }
 
-        /* Avoid cutting content */
         .receipt-container * {
           page-break-inside: avoid !important;
         }
 
-        /* Optional: hide elements not meant for print */
         .no-print {
           display: none !important;
         }
