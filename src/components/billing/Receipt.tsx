@@ -39,86 +39,112 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
   return (
     <div
       ref={ref}
-      className="receipt-container"
+      className="receipt-container receipt-width p-4 font-mono-receipt text-black bg-white"
       style={{
-        width: '54mm',
-        padding: '2mm',
+        width: '56mm',
         backgroundColor: '#fff',
         color: '#000',
-        fontFamily: "'Courier New', Courier, monospace",
-        fontSize: '10px',
         fontWeight: 'bold',
+        fontSize: '11px',
         lineHeight: '1.2'
       }}
     >
       {/* HEADER SECTION */}
-      <div style={{ textAlign: 'center', marginBottom: '8px' }}>
-        <div style={{ fontSize: '8px', letterSpacing: '1px' }}>{stars}</div>
-        <div style={{ fontSize: '14px', fontWeight: '900', margin: '2px 0' }}>RECEIPT</div>
-        <div style={{ fontSize: '8px', letterSpacing: '1px' }}>{stars}</div>
-
-        <div style={{ fontSize: '16px', fontWeight: '900', textTransform: 'uppercase', marginTop: '6px' }}>
+      <div className="text-center space-y-1">
+        <h1 className="text-[18px] font-bold uppercase leading-none mb-1" style={{ color: '#000' }}>
           {settings.restaurant_name || 'AKF FOODS'}
+        </h1>
+        <div className="text-[10px] leading-tight" style={{ color: '#000' }}>
+          <p className="whitespace-pre-wrap">{settings.address || 'Inqilab Road, Peshawar'}</p>
+          <div className="font-bold border-y border-black border-dashed py-1 my-2">
+            {settings.phone1 ? `Ph: ${settings.phone1}` : ''}
+            {settings.phone2 ? ` | ${settings.phone2}` : ''}
+          </div>
         </div>
       </div>
 
-      {/* INFO SECTION */}
-      <div style={{ fontSize: '9px', marginBottom: '8px', borderBottom: '1px solid #000', paddingBottom: '4px' }}>
-        <div style={{ display: 'flex' }}>
-          <span style={{ width: '60px' }}>Address:</span>
-          <span style={{ flex: 1 }}>{settings.address || 'Inqilab Road, Peshawar'}</span>
+      {/* BILL INFO */}
+      <div className="mt-2 flex justify-between items-end border-b border-black pb-1" style={{ color: '#000' }}>
+        <div className="text-left">
+          <p className="text-[12px] font-bold leading-none">ORDER: #{bill.bill_number?.split('-').pop() || '000'}</p>
+          <p className="text-[8px] mt-0.5">{bill.bill_number}</p>
         </div>
-        <div style={{ display: 'flex' }}>
-          <span style={{ width: '60px' }}>Date:</span>
-          <span style={{ flex: 1 }}>{dateStr} {timeStr}</span>
-        </div>
-        <div style={{ display: 'flex' }}>
-          <span style={{ width: '60px' }}>Bill #:</span>
-          <span style={{ flex: 1 }}>{bill.bill_number?.split('-').pop()}</span>
+        <div className="text-right">
+          <p className="font-bold uppercase text-[11px] leading-none">{bill.order_type}</p>
+          <p className="text-[8px] mt-0.5">{dateStr} {timeStr}</p>
         </div>
       </div>
 
       {/* ITEMS TABLE */}
-      <div style={{ marginBottom: '8px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #000', paddingBottom: '2px', fontWeight: '900' }}>
-          <span style={{ width: '70%' }}>Description</span>
-          <span style={{ width: '30%', textAlign: 'right' }}>Price</span>
+      <div className="mt-3" style={{ color: '#000' }}>
+        <div className="flex justify-between font-bold border-b border-black border-solid pb-1 mb-1 text-[10px]">
+          <span className="w-[50%] text-left">ITEM</span>
+          <span className="w-[20%] text-center">QTY</span>
+          <span className="w-[30%] text-right">TOTAL</span>
         </div>
 
-        <div style={{ marginTop: '4px' }}>
+        <div className="space-y-1.5 py-1">
           {bill.items.map((item: any, idx: number) => (
-            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', alignItems: 'flex-start' }}>
-              <div style={{ width: '70%', textTransform: 'uppercase', lineHeight: '1.1' }}>
-                {item.quantity} x {item.name}
-              </div>
-              <div style={{ width: '30%', textAlign: 'right' }}>{formatNum(item.totalPrice)}</div>
+            <div key={idx} className="flex justify-between items-start font-bold">
+              <div className="w-[50%] pr-1 uppercase text-[10px] leading-tight">{item.name}</div>
+              <div className="w-[20%] text-center text-[10px]">{item.quantity}</div>
+              <div className="w-[30%] text-right text-[10px] tabular-nums">{formatNum(item.totalPrice)}</div>
             </div>
           ))}
         </div>
+        <div className="border-t border-black border-dashed my-1"></div>
       </div>
 
       {/* TOTALS SECTION */}
-      <div style={{ borderTop: '1px solid #000', paddingTop: '4px', marginBottom: '8px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
-          <span>Tax</span>
-          <span>{formatNum(bill.tax)}</span>
+      <div className="mt-2 space-y-1" style={{ color: '#000' }}>
+        <div className="flex justify-between text-[11px]">
+          <span>SUBTOTAL:</span>
+          <span className="font-bold tabular-nums">{formatNum(bill.subtotal)}</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: '900', marginTop: '2px' }}>
-          <span>TOTAL</span>
+        {Number(bill.discount) > 0 && (
+          <div className="flex justify-between text-[11px]">
+            <span>DISCOUNT:</span>
+            <span className="font-bold tabular-nums">-{formatNum(bill.discount)}</span>
+          </div>
+        )}
+        {Number(bill.tax) > 0 && (
+          <div className="flex justify-between text-[11px]">
+            <span>TAX/GST ({settings.tax_percentage}%):</span>
+            <span className="font-bold tabular-nums">{formatNum(bill.tax)}</span>
+          </div>
+        )}
+
+        <div className="flex justify-between items-center bg-black text-white px-2 py-1.5 mt-2 font-bold text-[14px]">
+          <span>NET TOTAL:</span>
           <span>Rs. {formatNum(bill.total)}</span>
         </div>
       </div>
 
-      {/* FOOTER SECTION */}
-      <div style={{ textAlign: 'center', marginTop: '12px' }}>
-        <div style={{ fontSize: '14px', fontWeight: '900', marginBottom: '6px' }}>THANK YOU</div>
-        <div style={{ fontSize: '8px', letterSpacing: '1px', marginBottom: '4px' }}>{stars}</div>
-
-        {/* Placeholder for barcode style lines */}
-        <div style={{ letterSpacing: '2px', fontSize: '8px', overflow: 'hidden', height: '10px' }}>
-          ||||||||||||||||||||||||||||||||||||
+      {/* PAYMENT INFO */}
+      <div className="mt-2 flex justify-between text-[10px] font-bold italic" style={{ color: '#000' }}>
+        <span>MODE: {bill.payment_method?.toUpperCase()}</span>
+        <span>PAID: {formatNum(bill.amount_paid)}</span>
+      </div>
+      {Number(bill.change_returned) > 0 && (
+        <div className="flex justify-between font-bold border-t border-black border-dotted pt-1 mt-1 text-[11px]" style={{ color: '#000' }}>
+          <span>CHANGE:</span>
+          <span>Rs. {formatNum(bill.change_returned)}</span>
         </div>
-        <div style={{ fontSize: '8px' }}>{bill.bill_number}</div>
+      )}
+
+      {/* FOOTER SECTION */}
+      <div className="text-center mt-6 pt-2 border-t border-black space-y-1" style={{ color: '#000' }}>
+        <p className="font-bold text-[11px] whitespace-pre-line leading-tight">
+          {formatFooter(settings.receipt_footer)}
+        </p>
+        <div className="mt-2 text-[8px] tracking-widest font-bold">
+          <p>POWERED BY AKF POS SYSTEM</p>
+        </div>
+        <div className="mt-1 flex justify-center items-center gap-1">
+          <div className="h-[1px] bg-black flex-1"></div>
+          <span className="text-[7px] font-bold text-black">*** END OF RECEIPT ***</span>
+          <div className="h-[1px] bg-black flex-1"></div>
+        </div>
       </div>
     </div>
   );
