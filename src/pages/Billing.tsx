@@ -47,44 +47,6 @@ const Billing = () => {
   const handlePrint = useReactToPrint({
     // @ts-ignore - react-to-print v2 uses content
     content: () => receiptRef.current,
-    pageStyle: `
-      @media print {
-        /* Force body to 58mm width for small thermal printers */
-        body, html {
-          width: 58mm !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #fff !important;
-          -webkit-print-color-adjust: exact !important;
-          color-adjust: exact !important;
-        }
-
-        /* All text solid black for thermal heat transfer */
-        * {
-          color: #000 !important;
-          text-shadow: none !important;
-          box-shadow: none !important;
-        }
-
-        /* Receipt container styling */
-        .receipt-container {
-          width: 58mm;
-          max-width: 58mm;
-          padding: 2px 0;
-          font-family: 'Courier New', Courier, monospace !important;
-          font-size: 11px;
-          line-height: 1.2;
-        }
-
-        .receipt-container * {
-          page-break-inside: avoid !important;
-        }
-
-        .no-print {
-          display: none !important;
-        }
-      }
-    `,
   });
 
   useEffect(() => {
