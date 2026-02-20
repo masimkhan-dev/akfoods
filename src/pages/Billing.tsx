@@ -47,6 +47,27 @@ const Billing = () => {
   const handlePrint = useReactToPrint({
     // @ts-ignore - react-to-print v2 uses content
     content: () => receiptRef.current,
+    pageStyle: `
+      @page {
+        size: 80mm auto !important;
+        margin: 0 !important;
+      }
+      @media print {
+        body {
+          width: 80mm !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        .print-receipt {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    `,
   });
 
   useEffect(() => {

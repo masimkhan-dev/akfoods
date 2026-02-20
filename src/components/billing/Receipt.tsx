@@ -54,7 +54,7 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
       <div className="mt-3 py-1 border-b border-black flex justify-between items-end">
         <div>
           <p className="text-[14px] font-bold">#{bill.bill_number?.split('-').pop() || '000'}</p>
-          <p className="text-[9px] text-gray-700">{bill.bill_number}</p>
+          <p className="text-[9px] text-black">{bill.bill_number}</p>
         </div>
         <div className="text-right">
           <p className="font-bold uppercase tracking-widest text-[12px]">{bill.order_type}</p>
@@ -124,11 +124,11 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
         <p className="font-bold text-[11px] whitespace-pre-line leading-tight">
           {formatFooter(settings.receipt_footer)}
         </p>
-        <div className="mt-2 opacity-80 text-[8px] tracking-tighter">
+        <div className="mt-2 text-[8px] tracking-tighter">
           <p>POWERED BY AKF POS SYSTEM</p>
           <p>PROUDLY SERVING QUALITY</p>
         </div>
-        <div className="mt-1 flex justify-center items-center gap-1 opacity-50">
+        <div className="mt-1 flex justify-center items-center gap-1">
           <div className="h-[1px] bg-black flex-1"></div>
           <span className="text-[7px]">*** END OF RECEIPT ***</span>
           <div className="h-[1px] bg-black flex-1"></div>
