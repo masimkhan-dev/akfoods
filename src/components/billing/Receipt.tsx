@@ -35,7 +35,7 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
   };
 
   return (
-    <div ref={ref} className="print-receipt receipt-width p-4 font-mono-receipt text-[11px] leading-[1.2] text-black bg-white">
+    <div ref={ref} className="print-receipt receipt-container receipt-width p-4 font-mono-receipt text-[11px] leading-[1.2] text-black bg-white">
       {/* HEADER SECTION */}
       <div className="text-center space-y-1">
         <h1 className="text-[18px] font-bold uppercase leading-none mb-1">

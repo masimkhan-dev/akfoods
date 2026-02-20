@@ -48,23 +48,42 @@ const Billing = () => {
     // @ts-ignore - react-to-print v2 uses content
     content: () => receiptRef.current,
     pageStyle: `
-      @page {
-        size: 80mm auto !important;
-        margin: 0 !important;
-      }
       @media print {
-        body {
+        /* Force body to 80mm width and remove margins */
+        body, html {
           width: 80mm !important;
           margin: 0 !important;
           padding: 0 !important;
-        }
-        .print-receipt {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        }
-        * {
+          background: #fff !important;
           -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
+
+        /* All text black, high contrast */
+        * {
+          color: #000 !important;
+          background: #fff !important;
+          font-weight: normal !important;
+        }
+
+        /* Receipt container styling */
+        .receipt-container {
+          width: 80mm;
+          max-width: 80mm;
+          padding: 5px 0;
+          font-family: monospace, Arial, sans-serif;
+          font-size: 12px;
+          line-height: 1.4;
+        }
+
+        /* Avoid cutting content */
+        .receipt-container * {
+          page-break-inside: avoid !important;
+        }
+
+        /* Optional: hide elements not meant for print */
+        .no-print {
+          display: none !important;
         }
       }
     `,
