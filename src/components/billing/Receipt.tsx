@@ -70,12 +70,14 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
           <span className="w-[30%] text-right">TOTAL</span>
         </div>
 
-        <div className="space-y-1">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {bill.items.map((item: any, idx: number) => (
-            <div key={idx} className="flex justify-between items-start leading-tight">
-              <div className="w-[55%] pr-1 uppercase text-[10px]">{item.name}</div>
-              <div className="w-[15%] text-center tabular-nums">{item.quantity}</div>
-              <div className="w-[30%] text-right tabular-nums font-medium">{formatNum(item.totalPrice)}</div>
+            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', lineHeight: '1.2', fontWeight: 'bold' }}>
+              <div style={{ width: '55%', paddingRight: '4px', textTransform: 'uppercase', fontSize: '10px' }}>
+                {item.name}
+              </div>
+              <div style={{ width: '15%', textAlign: 'center' }}>{item.quantity}</div>
+              <div style={{ width: '30%', textAlign: 'right' }}>{formatNum(item.totalPrice)}</div>
             </div>
           ))}
         </div>
@@ -84,9 +86,9 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
 
       {/* TOTALS SECTION */}
       <div className="mt-2 space-y-0.5">
-        <div className="flex justify-between">
+        <div className="flex justify-between font-bold">
           <span>SUBTOTAL:</span>
-          <span className="tabular-nums">{formatNum(bill.subtotal)}</span>
+          <span>{formatNum(bill.subtotal)}</span>
         </div>
         {Number(bill.discount) > 0 && (
           <div className="flex justify-between font-medium">
