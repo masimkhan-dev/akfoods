@@ -34,6 +34,24 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
     return text.replace(/\\n/g, '\n');
   };
 
+  // Word-wrap: splits text at word boundaries, max maxLen chars per line
+  const wrapText = (text: string, maxLen: number): string[] => {
+    const words = text.toUpperCase().split(' ');
+    const lines: string[] = [];
+    let current = '';
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (candidate.length <= maxLen) {
+        current = candidate;
+      } else {
+        if (current) lines.push(current);
+        current = word;
+      }
+    }
+    if (current) lines.push(current);
+    return lines.length > 0 ? lines : [''];
+  };
+
   return (
     <div ref={ref} className="print-receipt receipt-width p-5 font-mono-receipt text-[11px] leading-[1.3] text-black bg-white">
       {/* HEADER SECTION */}
@@ -51,88 +69,110 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
       </div>
 
       {/* BILL INFO */}
-      <div className="mt-3 py-1 border-b border-black flex justify-between items-end">
-        <div>
-          <p className="text-[14px] font-bold">#{bill.bill_number?.split('-').pop() || '000'}</p>
-          <p className="text-[9px] text-gray-700">{bill.bill_number}</p>
+      <div className="mt-2 text-[10px]">
+        <p className="border-t border-black pt-1"></p>
+        <div className="flex justify-between font-bold">
+          <span>Bill#: {bill.bill_number?.split('-').pop() || '000'}</span>
+          <span className="uppercase">{bill.order_type}</span>
         </div>
-        <div className="text-right">
-          <p className="font-bold uppercase tracking-widest text-[12px]">{bill.order_type}</p>
-          <p className="text-[9px]">{dateStr} {timeStr}</p>
+        <div className="flex justify-between text-[9px] mt-0.5">
+          <span>{dateStr} {timeStr}</span>
+          {bill.customer_name && <span>{bill.customer_name}</span>}
         </div>
+        <p className="border-t border-black border-dashed mt-1"></p>
       </div>
 
       {/* ITEMS TABLE */}
-      <div className="mt-2 text-[11px]">
-        <div className="flex justify-between font-bold border-b border-black pb-0.5 mb-1">
-          <span className="w-[55%]">DESCRIPTION</span>
-          <span className="w-[15%] text-center">QTY</span>
-          <span className="w-[30%] text-right">TOTAL</span>
+      <div className="mt-2 text-[10px]">
+        <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'inherit', fontSize: 'inherit' }}>
+          <colgroup>
+            <col style={{ width: '22ch' }} />
+            <col style={{ width: '4ch' }} />
+            <col style={{ width: '8ch' }} />
+            <col style={{ width: '8ch' }} />
+          </colgroup>
+          <thead>
+            <tr style={{ borderBottom: '1px solid black' }}>
+              <th className="text-left font-bold pb-0.5">ITEM</th>
+              <th className="text-right font-bold pb-0.5">QTY</th>
+              <th className="text-right font-bold pb-0.5">RATE</th>
+              <th className="text-right font-bold pb-0.5">TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bill.items.flatMap((item: any, idx: number) => {
+              const nameLines = wrapText(item.name, 22);
+              const unitPrice = item.unitPrice ?? item.unit_price ?? 0;
+              return nameLines.map((line: string, lineIdx: number) => {
+                const isLastLine = lineIdx === nameLines.length - 1;
+                return (
+                  <tr key={`${idx}-${lineIdx}`} className="leading-tight">
+                    <td className="align-top">{line}</td>
+                    <td className="text-right tabular-nums">{isLastLine ? item.quantity : ''}</td>
+                    <td className="text-right tabular-nums">{isLastLine ? formatNum(unitPrice) : ''}</td>
+                    <td className="text-right tabular-nums font-medium">{isLastLine ? formatNum(item.totalPrice) : ''}</td>
+                  </tr>
+                );
+              });
+            })}
+          </tbody>
+        </table>
+        <div className="flex justify-between mt-1 border-t border-black border-dashed pt-0.5 text-[9px]">
+          <span>Items: {bill.items.length}</span>
+          <span>Qty: {bill.items.reduce((s: number, i: any) => s + i.quantity, 0)}</span>
         </div>
-
-        <div className="space-y-1">
-          {bill.items.map((item: any, idx: number) => (
-            <div key={idx} className="flex justify-between items-start leading-tight">
-              <div className="w-[55%] pr-1 uppercase text-[10px]">{item.name}</div>
-              <div className="w-[15%] text-center tabular-nums">{item.quantity}</div>
-              <div className="w-[30%] text-right tabular-nums font-medium">{formatNum(item.totalPrice)}</div>
-            </div>
-          ))}
-        </div>
-        <p className="mt-1 border-t border-black border-dashed"></p>
       </div>
 
       {/* TOTALS SECTION */}
-      <div className="mt-2 space-y-0.5">
+      <div className="mt-2 text-[10px] space-y-0.5">
         <div className="flex justify-between">
           <span>SUBTOTAL:</span>
-          <span className="tabular-nums">{formatNum(bill.subtotal)}</span>
+          <span className="tabular-nums">Rs. {formatNum(bill.subtotal)}</span>
         </div>
         {Number(bill.discount) > 0 && (
-          <div className="flex justify-between font-medium">
+          <div className="flex justify-between">
             <span>DISCOUNT:</span>
-            <span className="tabular-nums">-{formatNum(bill.discount)}</span>
+            <span className="tabular-nums">-Rs. {formatNum(bill.discount)}</span>
           </div>
         )}
         {Number(bill.tax) > 0 && (
           <div className="flex justify-between">
             <span>TAX/GST ({settings.tax_percentage}%):</span>
-            <span className="tabular-nums">{formatNum(bill.tax)}</span>
+            <span className="tabular-nums">Rs. {formatNum(bill.tax)}</span>
           </div>
         )}
-
-        <div className="flex justify-between items-center bg-black text-white px-1 py-1 mt-1 font-bold text-[14px]">
+        <p className="border-t border-black"></p>
+        <div className="flex justify-between font-bold text-[13px]">
           <span>NET TOTAL:</span>
-          <span>Rs. {formatNum(bill.total)}</span>
+          <span className="tabular-nums">Rs. {formatNum(bill.total)}</span>
         </div>
+        <p className="border-t border-black"></p>
       </div>
 
       {/* PAYMENT INFO */}
-      <div className="mt-2 flex justify-between text-[10px] italic">
-        <span>MODE: {bill.payment_method?.toUpperCase()}</span>
-        <span>PAID: {formatNum(bill.amount_paid)}</span>
-      </div>
-      {Number(bill.change_returned) > 0 && (
-        <div className="flex justify-between font-bold border-t border-black border-dotted pt-0.5 mt-0.5">
-          <span>CHANGE:</span>
-          <span>Rs. {formatNum(bill.change_returned)}</span>
+      <div className="mt-1 text-[10px] space-y-0.5">
+        <div className="flex justify-between">
+          <span>PAYMENT:</span>
+          <span className="font-bold uppercase">{bill.payment_method}</span>
         </div>
-      )}
+        <div className="flex justify-between">
+          <span>PAID:</span>
+          <span className="tabular-nums">Rs. {formatNum(bill.amount_paid)}</span>
+        </div>
+        {Number(bill.change_returned) > 0 && (
+          <div className="flex justify-between font-bold">
+            <span>CHANGE:</span>
+            <span className="tabular-nums">Rs. {formatNum(bill.change_returned)}</span>
+          </div>
+        )}
+      </div>
 
       {/* FOOTER SECTION */}
-      <div className="text-center mt-6 pt-2 border-t border-black space-y-1">
+      <div className="text-center mt-4 pt-2 border-t border-black">
         <p className="font-bold text-[11px] whitespace-pre-line leading-tight">
           {formatFooter(settings.receipt_footer)}
         </p>
-        <div className="mt-2 opacity-80 text-[8px] tracking-tighter">
-          <p>POWERED BY AKF POS SYSTEM</p>
-          <p>PROUDLY SERVING QUALITY</p>
-        </div>
-        <div className="mt-1 flex justify-center items-center gap-1 opacity-50">
-          <div className="h-[1px] bg-black flex-1"></div>
-          <span className="text-[7px]">*** END OF RECEIPT ***</span>
-          <div className="h-[1px] bg-black flex-1"></div>
-        </div>
+        <p className="text-[8px] mt-2 opacity-50">MAK.dev</p>
       </div>
     </div>
   );
