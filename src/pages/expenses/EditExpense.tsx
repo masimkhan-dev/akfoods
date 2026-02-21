@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { ArrowLeft, Pencil, Loader2 } from 'lucide-react';
 
 const EditExpense = () => {
   const { id } = useParams<{ id: string }>();
@@ -64,7 +64,11 @@ const EditExpense = () => {
   };
 
   if (role !== 'admin') return <div className="p-6"><p className="text-muted-foreground">Only admins can edit expenses.</p></div>;
-  if (fetching) return <div className="p-6 text-muted-foreground text-sm">Loading...</div>;
+  if (fetching) return (
+    <div className="flex items-center justify-center p-12">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  );
 
   return (
     <div className="p-6 max-w-2xl">
@@ -127,7 +131,14 @@ const EditExpense = () => {
             </div>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => navigate('/dashboard/expenses')}>Cancel</Button>
-              <Button type="submit" className="flex-[2]" disabled={loading}>{loading ? 'Saving...' : 'Update Expense'}</Button>
+              <Button type="submit" className="flex-[2]" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : 'Update Expense'}
+              </Button>
             </div>
           </form>
         </CardContent>

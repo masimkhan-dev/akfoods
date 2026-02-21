@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Save } from 'lucide-react';
+import { Save, Loader2 } from 'lucide-react';
 
 const SettingsPage = () => {
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -40,7 +40,11 @@ const SettingsPage = () => {
     toast.success('Settings saved');
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center p-12">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-6 max-w-2xl">

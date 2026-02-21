@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { ArrowLeft, Receipt, Upload, X } from 'lucide-react';
+import { ArrowLeft, Receipt, Upload, X, Loader2 } from 'lucide-react';
 
 const AddExpense = () => {
   const navigate = useNavigate();
@@ -182,7 +182,12 @@ const AddExpense = () => {
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => navigate('/dashboard/expenses')}>Cancel</Button>
               <Button type="submit" className="flex-[2]" disabled={loading}>
-                {loading ? 'Saving...' : 'Save Expense'}
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : 'Save Expense'}
               </Button>
             </div>
           </form>

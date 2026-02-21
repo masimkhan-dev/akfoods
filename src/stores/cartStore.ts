@@ -6,6 +6,8 @@ export interface CartItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  note?: string;
+  extraCharge?: number;
 }
 
 interface CartState {
@@ -19,6 +21,8 @@ interface CartState {
   addItem: (item: { id: string; name: string; price: number }) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
+  updateItemNote: (id: string, note: string) => void;
+  updateItemExtraCharge: (id: string, amount: number) => void;
   setCustomerName: (name: string) => void;
   setCustomerPhone: (phone: string) => void;
   setOrderType: (type: 'dine-in' | 'takeaway' | 'delivery') => void;
@@ -50,7 +54,11 @@ export const useCartStore = create<CartState>((set, get) => ({
         return {
           items: state.items.map((i) =>
             i.id === item.id
-              ? { ...i, quantity: i.quantity + 1, totalPrice: (i.quantity + 1) * i.unitPrice }
+              ? {
+                ...i,
+                quantity: i.quantity + 1,
+                totalPrice: (i.quantity + 1) * (i.unitPrice + (i.extraCharge || 0))
+              }
               : i
           ),
         };
@@ -67,7 +75,29 @@ export const useCartStore = create<CartState>((set, get) => ({
     if (quantity < 1) return;
     set((state) => ({
       items: state.items.map((i) =>
-        i.id === id ? { ...i, quantity, totalPrice: quantity * i.unitPrice } : i
+        i.id === id ? { ...i, quantity, totalPrice: quantity * (i.unitPrice + (i.extraCharge || 0)) } : i
+      ),
+    }));
+  },
+
+  updateItemNote: (id, note) => {
+    set((state) => ({
+      items: state.items.map((i) =>
+        i.id === id ? { ...i, note } : i
+      ),
+    }));
+  },
+
+  updateItemExtraCharge: (id, amount) => {
+    set((state) => ({
+      items: state.items.map((i) =>
+        i.id === id
+          ? {
+            ...i,
+            extraCharge: amount,
+            totalPrice: i.quantity * (i.unitPrice + amount)
+          }
+          : i
       ),
     }));
   },

@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { Plus, Search, Pencil, Trash2, TrendingDown, Calendar, Tag } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, TrendingDown, Calendar, Tag, Loader2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 
 interface Expense {
@@ -172,7 +172,10 @@ const ExpenseList = () => {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="py-12 text-center text-muted-foreground text-sm">Loading expenses...</div>
+            <div className="py-12 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-sm">Loading expenses...</p>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground text-sm">No expenses found for selected period</div>
           ) : (

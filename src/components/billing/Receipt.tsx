@@ -112,14 +112,16 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
         <tbody>
           {bill.items.flatMap((item: any, idx: number) => {
             const nameLines = wrapText(item.name, 22);
-            const unitPrice = item.unitPrice ?? item.unit_price ?? 0;
+            const basePrice = item.unitPrice ?? item.unit_price ?? 0;
+            const extra = item.extraCharge ?? 0;
+            const finalRate = basePrice + extra;
             return nameLines.map((line: string, lineIdx: number) => {
               const isLastLine = lineIdx === nameLines.length - 1;
               return (
                 <tr key={`${idx}-${lineIdx}`}>
                   <td className="align-top py-0.5">{line}</td>
                   <td className="text-right tabular-nums py-0.5">{isLastLine ? item.quantity : ''}</td>
-                  <td className="text-right tabular-nums py-0.5">{isLastLine ? formatNum(unitPrice) : ''}</td>
+                  <td className="text-right tabular-nums py-0.5">{isLastLine ? formatNum(finalRate) : ''}</td>
                   <td className="text-right tabular-nums py-0.5">{isLastLine ? formatNum(item.totalPrice) : ''}</td>
                 </tr>
               );

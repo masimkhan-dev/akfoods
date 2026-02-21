@@ -6,106 +6,112 @@
 
 @layer base {
   :root {
-    --background: 0 0% 97%;
-    --foreground: 220 20% 10%;
+    --background: 0 0% 98%;
+    --foreground: 220 40% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card-foreground: 220 40% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 10%;
+    --popover-foreground: 220 40% 12%;
 
-    --primary: 0 72% 51%;
-    --primary-foreground: 0 0% 100%;
+    /* Premium Crimson / Fire Red */
+    --primary: 346 84% 45%;
+    --primary-foreground: 0 0% 98%;
 
-    --secondary: 45 93% 54%;
-    --secondary-foreground: 220 20% 10%;
+    /* Sophisticated Gold / Amber secondary */
+    --secondary: 42 100% 50%;
+    --secondary-foreground: 220 40% 12%;
 
-    --muted: 220 14% 94%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 45%;
 
-    --accent: 142 64% 36%;
-    --accent-foreground: 0 0% 100%;
+    /* Emerald Green for success */
+    --accent: 158 64% 40%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 84% 45%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 220 13% 90%;
-    --input: 220 13% 90%;
-    --ring: 0 72% 51%;
+    --border: 220 13% 92%;
+    --input: 220 13% 92%;
+    --ring: 346 84% 45%;
 
-    --radius: 0.625rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 220 20% 10%;
-    --sidebar-foreground: 220 14% 90%;
-    --sidebar-primary: 0 72% 51%;
+    /* Deep Navy Sidebar */
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 346 84% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 15% 18%;
-    --sidebar-accent-foreground: 220 14% 90%;
-    --sidebar-border: 220 15% 20%;
-    --sidebar-ring: 0 72% 51%;
+    --sidebar-accent: 217 32% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 32% 20%;
+    --sidebar-ring: 346 84% 45%;
 
-    --chart-1: 0 72% 51%;
-    --chart-2: 45 93% 54%;
-    --chart-3: 142 64% 36%;
-    --chart-4: 200 70% 50%;
-    --chart-5: 280 60% 55%;
-
-    --success: 142 64% 36%;
+    --success: 158 64% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 45 93% 54%;
-    --warning-foreground: 220 20% 10%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 12%;
+    --border: 217 32% 17%;
   }
 }
 
 @layer base {
   * {
     @apply border-border;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease-out;
   }
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-  }
-
-  /* Hide number input spinners */
-  input::-webkit-outer-spin-button,
-  input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-
-  input[type=number] {
-    -moz-appearance: textfield;
-    appearance: textfield;
+    background-image: radial-gradient(at 0% 0%, hsla(346, 84%, 45%, 0.03) 0, transparent 50%),
+      radial-gradient(at 50% 0%, hsla(42, 100%, 50%, 0.02) 0, transparent 50%);
   }
 }
 
 @layer utilities {
   .font-display {
     font-family: 'Space Grotesk', system-ui, sans-serif;
+    letter-spacing: -0.02em;
   }
 
   .font-mono-receipt {
     font-family: 'JetBrains Mono', 'Courier New', monospace;
   }
 
+  .glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .premium-shadow {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+  }
+
+  .premium-hover {
+    @apply hover:scale-[1.02] hover:premium-shadow transition-all duration-300;
+  }
+
   .pos-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 0.75rem;
   }
 
-  .receipt-width {
-    width: 80mm;
-    max-width: 80mm;
-  }
-
   .scrollbar-thin::-webkit-scrollbar {
-    width: 4px;
+    width: 5px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full;
+    background: hsla(220, 10%, 45%, 0.1);
+    border-radius: 10px;
   }
 }
 

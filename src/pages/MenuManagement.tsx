@@ -126,6 +126,21 @@ const MenuManagement = () => {
 
   const filtered = filter === 'all' ? items : items.filter((i) => i.category === filter);
 
+  const getCategoryIcon = (category: string) => {
+    const cat = category.toLowerCase();
+    if (cat.includes('burger') || cat.includes('fast')) return '🍔';
+    if (cat.includes('pizza')) return '🍕';
+    if (cat.includes('drink') || cat.includes('beverage') || cat.includes('cold') || cat.includes('juice')) return '🥤';
+    if (cat.includes('chicken') || cat.includes('tikka') || cat.includes('karahi') || cat.includes('meat')) return '🍗';
+    if (cat.includes('rice') || cat.includes('biryani') || cat.includes('pulao')) return '🍚';
+    if (cat.includes('roti') || cat.includes('naan') || cat.includes('bread')) return '🫓';
+    if (cat.includes('dessert') || cat.includes('sweet') || cat.includes('cake') || cat.includes('ice')) return '🍰';
+    if (cat.includes('tea') || cat.includes('coffee') || cat.includes('hot')) return '☕';
+    if (cat.includes('fries') || cat.includes('side') || cat.includes('snack')) return '🍟';
+    if (cat.includes('deal') || cat.includes('combo')) return '🍱';
+    return '🍽️';
+  };
+
   return (
     <div className="p-6 space-y-4 max-w-6xl">
       <div className="flex items-center justify-between">
@@ -133,37 +148,92 @@ const MenuManagement = () => {
         <Button onClick={openAdd}><Plus className="w-4 h-4 mr-1" /> Add Item</Button>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto">
-        <Badge variant={filter === 'all' ? 'default' : 'outline'} className="cursor-pointer px-3 py-1.5" onClick={() => setFilter('all')}>All</Badge>
+      <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-thin">
+        <button
+          className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border ${filter === 'all'
+            ? 'bg-primary text-white border-primary premium-shadow'
+            : 'bg-white text-muted-foreground border-muted hover:border-primary/30'}`}
+          onClick={() => setFilter('all')}
+        >
+          All Items
+        </button>
         {categories.map((c) => (
-          <Badge key={c.id} variant={filter === c.category_name ? 'default' : 'outline'} className="cursor-pointer px-3 py-1.5 shrink-0" onClick={() => setFilter(c.category_name)}>
+          <button
+            key={c.id}
+            className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border ${filter === c.category_name
+              ? 'bg-primary text-white border-primary premium-shadow'
+              : 'bg-white text-muted-foreground border-muted hover:border-primary/30'}`}
+            onClick={() => setFilter(c.category_name)}
+          >
             {c.category_name}
-          </Badge>
+          </button>
         ))}
       </div>
 
       <div className="pos-grid">
         {filtered.map((item) => (
-          <Card key={item.id} className={`p-3 relative ${!item.is_available ? 'opacity-50' : ''}`}>
-            {item.image_url ? (
-              <div className="aspect-square rounded-md overflow-hidden mb-2 bg-muted">
-                <img src={item.image_url} alt={item.item_name} className="w-full h-full object-cover" />
-              </div>
-            ) : (
-              <div className="aspect-square rounded-md mb-2 bg-muted flex items-center justify-center"><span className="text-3xl">🍔</span></div>
-            )}
-            <p className="font-medium text-sm truncate">{item.item_name}</p>
-            <p className="text-primary font-bold text-sm">Rs. {Number(item.price).toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground truncate">{item.category}</p>
+          <div
+            key={item.id}
+            className={`bg-white rounded-xl p-2.5 premium-shadow premium-hover border-2 transition-all flex flex-col gap-2 group ${!item.is_available ? 'opacity-60 border-dashed border-muted' : 'border-transparent hover:border-primary/20'}`}
+          >
+            <div className="relative aspect-square rounded-lg overflow-hidden bg-muted/30">
+              {item.image_url ? (
+                <img src={item.image_url} alt={item.item_name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-3xl transition-all font-serif">
+                  {getCategoryIcon(item.category)}
+                </div>
+              )}
 
-            <div className="flex items-center justify-between mt-2 pt-2 border-t">
-              <Switch checked={item.is_available} onCheckedChange={() => toggleAvailability(item)} />
-              <div className="flex gap-1">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(item)}><Pencil className="w-3 h-3" /></Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(item.id)}><Trash2 className="w-3 h-3" /></Button>
+              {/* Floating Management Actions */}
+              <div className="absolute top-1.5 right-1.5 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-7 w-7 rounded-lg shadow-lg hover:bg-white hover:text-primary transition-all backdrop-blur-md bg-white/80"
+                  onClick={(e) => { e.stopPropagation(); openEdit(item); }}
+                >
+                  <Pencil className="w-3 h-3" />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-7 w-7 rounded-lg shadow-lg hover:bg-white hover:text-destructive transition-all backdrop-blur-md bg-white/80"
+                  onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+
+              {!item.is_available && (
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center pointer-events-none">
+                  <Badge variant="destructive" className="uppercase font-bold tracking-widest text-[8px] h-5">Sold Out</Badge>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-0.5">
+              <div className="flex items-start justify-between gap-1">
+                <p className="font-bold text-[11px] tracking-tight leading-tight line-clamp-2 min-h-[1.5rem] group-hover:text-primary transition-colors">{item.item_name}</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-primary font-black text-[10px] tabular-nums">Rs. {Number(item.price).toLocaleString()}</p>
+                <Badge variant="outline" className="text-[8px] font-bold uppercase tracking-tighter bg-muted/20 border-none px-1 h-4">{item.category}</Badge>
               </div>
             </div>
-          </Card>
+
+            <div className="flex items-center justify-between mt-auto pt-2 border-t border-muted/50">
+              <div className="flex items-center gap-1.5">
+                <Switch
+                  checked={item.is_available}
+                  onCheckedChange={() => toggleAvailability(item)}
+                  className="scale-[0.6] origin-left"
+                />
+                <span className="text-[8px] font-bold text-muted-foreground uppercase">{item.is_available ? 'Live' : 'Off'}</span>
+              </div>
+              <Badge variant="outline" className="text-[7px] font-bold uppercase tracking-tighter bg-muted/20 border-none px-1 h-3.5 max-w-[60px] truncate">{item.category}</Badge>
+            </div>
+          </div>
         ))}
       </div>
 

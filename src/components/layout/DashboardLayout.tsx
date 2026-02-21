@@ -23,15 +23,15 @@ const DashboardLayout = () => {
   if (!user) return <Navigate to="/login" replace />;
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
-      ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+    `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 group ${isActive
+      ? 'bg-primary text-primary-foreground premium-shadow scale-[1.02]'
+      : 'text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:translate-x-1'
     }`;
 
   const subNavLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-lg text-sm transition-colors ${isActive
-      ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium'
-      : 'text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+    `flex items-center gap-2.5 pl-10 pr-4 py-2 rounded-lg text-sm transition-all duration-200 ${isActive
+      ? 'text-primary font-semibold'
+      : 'text-sidebar-foreground/50 hover:text-sidebar-accent-foreground'
     }`;
 
   return (
@@ -99,16 +99,16 @@ const DashboardLayout = () => {
           )}
         </nav>
 
-        <div className="p-3 border-t border-sidebar-border shrink-0">
+        <div className="p-4 border-t border-sidebar-border/50 shrink-0 bg-black/10 backdrop-blur-sm">
           <div className="flex items-center justify-between">
-            <div className="text-xs">
-              <p className="font-medium text-sidebar-foreground">{username}</p>
-              <p className="text-sidebar-foreground/50 capitalize">{role}</p>
+            <div className="min-w-0">
+              <p className="font-bold text-sidebar-foreground truncate">{username}</p>
+              <p className="text-[10px] uppercase tracking-widest text-sidebar-foreground/40 font-semibold">{role}</p>
             </div>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+              className="h-9 w-9 text-sidebar-foreground/40 hover:text-primary hover:bg-white/5 rounded-full transition-all"
               onClick={logout}
             >
               <LogOut className="w-4 h-4" />
