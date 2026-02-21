@@ -53,13 +53,13 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
   };
 
   return (
-    <div ref={ref} className="print-receipt receipt-width p-5 font-mono-receipt text-[11px] leading-[1.3] text-black bg-white">
+    <div ref={ref} className="print-receipt receipt-width px-3 py-4 font-mono-receipt text-[12px] leading-[1.4] text-black bg-white" style={{ letterSpacing: '-0.02em' }}>
       {/* HEADER SECTION */}
       <div className="text-center">
         <h1 className="text-lg font-bold uppercase tracking-tight leading-tight mb-1">
           {settings.restaurant_name || 'AKF BURGERS'}
         </h1>
-        <div className="px-1 text-[10px] space-y-0.5">
+        <div className="px-1 text-[12px] space-y-0.5">
           <p className="whitespace-pre-wrap">{settings.address || 'Inqilab Road, Peshawar'}</p>
           <p className="font-bold border-y border-black border-dashed py-0.5 mt-1">
             {settings.phone1 ? `Ph: ${settings.phone1}` : ''}
@@ -75,7 +75,7 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
           <span>Bill#: {bill.bill_number?.split('-').pop() || '000'}</span>
           <span className="uppercase">{bill.order_type}</span>
         </div>
-        <div className="flex justify-between text-[9px] mt-0.5">
+        <div className="flex justify-between text-[11px] mt-0.5">
           <span>{dateStr} {timeStr}</span>
           {bill.customer_name && <span>{bill.customer_name}</span>}
         </div>
@@ -83,13 +83,13 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
       </div>
 
       {/* ITEMS TABLE */}
-      <div className="mt-2 text-[10px]">
+      <div className="mt-2 text-[12px]">
         <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'inherit', fontSize: 'inherit' }}>
           <colgroup>
             <col style={{ width: '22ch' }} />
             <col style={{ width: '4ch' }} />
             <col style={{ width: '8ch' }} />
-            <col style={{ width: '8ch' }} />
+            <col style={{ width: '6ch' }} />
           </colgroup>
           <thead>
             <tr style={{ borderBottom: '1px solid black' }}>
@@ -117,14 +117,14 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
             })}
           </tbody>
         </table>
-        <div className="flex justify-between mt-1 border-t border-black border-dashed pt-0.5 text-[9px]">
+        <div className="flex justify-between mt-1 border-t border-black border-dashed pt-0.5 text-[11px]">
           <span>Items: {bill.items.length}</span>
           <span>Qty: {bill.items.reduce((s: number, i: any) => s + i.quantity, 0)}</span>
         </div>
       </div>
 
       {/* TOTALS SECTION */}
-      <div className="mt-2 text-[10px] space-y-0.5">
+      <div className="mt-3 text-[12px] space-y-1">
         <div className="flex justify-between">
           <span>SUBTOTAL:</span>
           <span className="tabular-nums">Rs. {formatNum(bill.subtotal)}</span>
@@ -150,7 +150,7 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
       </div>
 
       {/* PAYMENT INFO */}
-      <div className="mt-1 text-[10px] space-y-0.5">
+      <div className="mt-2 text-[12px] space-y-1">
         <div className="flex justify-between">
           <span>PAYMENT:</span>
           <span className="font-bold uppercase">{bill.payment_method}</span>
