@@ -20,7 +20,8 @@ const KOT = forwardRef<HTMLDivElement, KOTProps>(({ bill, settings }, ref) => {
         hour12: true,
     });
 
-    const totalQty = bill.items.reduce((sum: number, i: any) => sum + i.quantity, 0);
+    const standardItems = bill.items.filter((i: any) => (i.name || i.item_name) !== 'Delivery Charges');
+    const totalQty = standardItems.reduce((sum: number, i: any) => sum + i.quantity, 0);
 
     return (
         <div
@@ -58,7 +59,7 @@ const KOT = forwardRef<HTMLDivElement, KOTProps>(({ bill, settings }, ref) => {
                         <col style={{ width: '39ch' }} />
                     </colgroup>
                     <tbody>
-                        {bill.items.map((item: any, idx: number) => (
+                        {standardItems.map((item: any, idx: number) => (
                             <tr key={idx} className="border-b border-black border-dashed">
                                 <td className="align-top py-2 font-bold text-[18px]">{item.quantity}</td>
                                 <td className="align-top py-2 pl-2">
@@ -76,7 +77,7 @@ const KOT = forwardRef<HTMLDivElement, KOTProps>(({ bill, settings }, ref) => {
 
             {/* SUMMARY */}
             <div className="border-t-2 border-black pt-2 flex justify-between font-bold text-[14px]">
-                <span>TOTAL ITEMS: {bill.items.length}</span>
+                <span>TOTAL ITEMS: {standardItems.length}</span>
                 <span>QTY: {totalQty}</span>
             </div>
 

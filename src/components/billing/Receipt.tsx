@@ -50,7 +50,16 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
     return lines.length > 0 ? lines : [''];
   };
 
-  const totalQty = bill.items.reduce((s: number, i: any) => s + i.quantity, 0);
+  const subtotal = Number(bill.subtotal) || 0;
+  const total = Number(bill.total) || 0;
+  const tax = Number(bill.tax) || 0;
+  const discount = Number(bill.discount) || 0;
+
+  // Since delivery charges are mathematically included in total but not saved as a separate column or item
+  const deliveryCharge = Math.round(total - subtotal - tax + discount);
+  const standardItems = bill.items.filter((i: any) => (i.name || i.item_name) !== 'Delivery Charges');
+
+  const totalQty = standardItems.reduce((s: number, i: any) => s + i.quantity, 0);
 
   return (
     <div
@@ -90,6 +99,11 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
             <span>Customer: {bill.customer_name}</span>
           </div>
         )}
+        {bill.customer_phone && (
+          <div className="mt-0.5 text-[11px]">
+            <span>Phone: {bill.customer_phone}</span>
+          </div>
+        )}
       </div>
 
       {/* ── ITEMS TABLE ── */}
@@ -110,8 +124,8 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
           </tr>
         </thead>
         <tbody>
-          {bill.items.flatMap((item: any, idx: number) => {
-            const nameLines = wrapText(item.name, 22);
+          {standardItems.flatMap((item: any, idx: number) => {
+            const nameLines = wrapText(item.name || item.item_name, 22);
             const basePrice = item.unitPrice ?? item.unit_price ?? 0;
             const extra = item.extraCharge ?? 0;
             const finalRate = basePrice + extra;
@@ -133,7 +147,7 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
 
       {/* ── ITEMS SUMMARY ── */}
       <div className="flex justify-between text-[11px] py-1">
-        <span>Items: {bill.items.length}</span>
+        <span>Items: {standardItems.length}</span>
         <span>Qty: {totalQty}</span>
       </div>
 
@@ -153,6 +167,12 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
           <div className="flex justify-between py-0.5">
             <span>Tax ({settings.tax_percentage}%):</span>
             <span className="tabular-nums">Rs. {formatNum(bill.tax)}</span>
+          </div>
+        )}
+        {Number(deliveryCharge) > 0 && (
+          <div className="flex justify-between py-0.5">
+            <span>Delivery:</span>
+            <span className="tabular-nums">Rs. {formatNum(deliveryCharge)}</span>
           </div>
         )}
         <p className="border-t border-black mt-1"></p>

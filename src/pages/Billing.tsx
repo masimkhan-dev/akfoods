@@ -378,9 +378,9 @@ const Billing = () => {
   const handleAddItem = useCallback((item: MenuItem) => {
     const start = performance.now();
     const existing = cart.items.find(i => i.id === item.id);
-    
+
     cart.addItem({ id: item.id, name: item.item_name, price: Number(item.price) });
-    
+
     if (existing) {
       toast.info(`${item.item_name} quantity increased to ${existing.quantity + 1}`, {
         icon: '➕',
@@ -628,7 +628,7 @@ const Billing = () => {
 
           {/* Cart Summary Header */}
           <div className="border-t bg-muted/5 p-3 space-y-3">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
               <div className="flex-1 space-y-1">
                 <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Discount</label>
                 <div className="relative">
@@ -643,6 +643,22 @@ const Billing = () => {
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
                 </div>
               </div>
+              {cart.orderType === 'delivery' && (
+                <div className="flex-1 space-y-1">
+                  <label className="text-[9px] font-bold text-primary uppercase tracking-widest pl-1">Delivery</label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={cart.deliveryCharge || ''}
+                      onChange={(e) => cart.setDeliveryCharge(Number(e.target.value) || 0)}
+                      placeholder="0"
+                      className="h-8 rounded-lg bg-white border-primary/20 focus-visible:ring-primary/20 pr-6 text-xs font-bold"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
+                  </div>
+                </div>
+              )}
               <div className="flex-1 space-y-1">
                 <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Amount Paid</label>
                 <div className="relative">
@@ -676,6 +692,13 @@ const Billing = () => {
                 <div className="flex justify-between items-center text-[11px]">
                   <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Tax ({cart.taxPercentage}%)</span>
                   <span className="text-muted-foreground tabular-nums font-bold">Rs. {cartTax.toLocaleString()}</span>
+                </div>
+              )}
+
+              {cart.deliveryCharge > 0 && (
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Delivery</span>
+                  <span className="text-muted-foreground tabular-nums font-bold">Rs. {cart.deliveryCharge.toLocaleString()}</span>
                 </div>
               )}
 

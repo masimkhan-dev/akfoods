@@ -18,6 +18,7 @@ interface CartState {
   discount: number;
   paymentMethod: 'cash' | 'card' | 'mobile';
   amountPaid: number;
+  deliveryCharge: number;
   addItem: (item: { id: string; name: string; price: number }) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
@@ -29,6 +30,7 @@ interface CartState {
   setDiscount: (discount: number) => void;
   setPaymentMethod: (method: 'cash' | 'card' | 'mobile') => void;
   setAmountPaid: (amount: number) => void;
+  setDeliveryCharge: (amount: number) => void;
   clearCart: () => void;
   taxEnabled: boolean;
   taxPercentage: number;
@@ -46,6 +48,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   discount: 0,
   paymentMethod: 'cash',
   amountPaid: 0,
+  deliveryCharge: 0,
 
   addItem: (item) => {
     set((state) => {
@@ -108,9 +111,10 @@ export const useCartStore = create<CartState>((set, get) => ({
   setDiscount: (discount) => set({ discount }),
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
   setAmountPaid: (amountPaid) => set({ amountPaid }),
+  setDeliveryCharge: (deliveryCharge) => set({ deliveryCharge }),
 
   clearCart: () =>
-    set({ items: [], customerName: '', customerPhone: '', discount: 0, amountPaid: 0, orderType: 'takeaway', paymentMethod: 'cash' }),
+    set({ items: [], customerName: '', customerPhone: '', discount: 0, amountPaid: 0, orderType: 'takeaway', paymentMethod: 'cash', deliveryCharge: 0 }),
 
   taxEnabled: false,
   taxPercentage: 0,
@@ -130,6 +134,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     const subtotal = get().getSubtotal();
     const tax = get().getTax();
     const discount = get().discount;
-    return Math.max(0, subtotal + tax - discount);
+    const dev = get().deliveryCharge || 0;
+    return Math.max(0, subtotal + tax - discount + dev);
   },
 }));
