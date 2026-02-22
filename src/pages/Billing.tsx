@@ -221,12 +221,8 @@ const Billing = () => {
 
   const handlePrintKOT = useReactToPrint({
     // @ts-ignore
-    content: () => {
-      console.log("KOT Print Triggered - Ref Current:", kotRef.current);
-      return kotRef.current;
-    },
+    content: () => kotRef.current,
     onAfterPrint: () => {
-      console.log("KOT Print Completed - Performing Cleanup");
       toast.success("Order Processed: Bill & KOT Printed");
       cart.clearCart();
       fetchTodayOverview();
@@ -235,12 +231,8 @@ const Billing = () => {
 
   const handlePrint = useReactToPrint({
     // @ts-ignore
-    content: () => {
-      console.log("Receipt Print Triggered - Ref Current:", receiptRef.current);
-      return receiptRef.current;
-    },
+    content: () => receiptRef.current,
     onAfterPrint: () => {
-      console.log("Receipt Print Dialog Closed - Scheduling KOT");
       // Give Windows Spooler 500ms to finish Receipt buffer before sending KOT
       setTimeout(() => {
         handlePrintKOT();
@@ -379,9 +371,10 @@ const Billing = () => {
 
       console.timeEnd('OrderProcessing');
 
-      // Deterministic trigger: Print components are always mounted, 
-      // but they render null-safe content based on the updated lastBill state.
-      handlePrint();
+      // Deterministic trigger: Tiny delay to ensure React has painted the DOM with new bill data
+      setTimeout(() => {
+        handlePrint();
+      }, 150);
     } finally {
       setSaving(false);
     }
