@@ -6,7 +6,15 @@ interface KOTProps {
 }
 
 const KOT = forwardRef<HTMLDivElement, KOTProps>(({ bill, settings }, ref) => {
-    if (!bill) return <div ref={ref} />;
+    console.log("Rendering KOT Component - Ref Attached:", !!ref, "Bill Available:", !!bill);
+
+    if (!bill) {
+        return (
+            <div ref={ref} className="print-container-hidden" style={{ display: 'none' }}>
+                {/* Placeholder to keep ref valid while not printing */}
+            </div>
+        );
+    }
 
     const date = new Date(bill.created_at);
     const dateStr = date.toLocaleDateString('en-GB', {
@@ -63,7 +71,7 @@ const KOT = forwardRef<HTMLDivElement, KOTProps>(({ bill, settings }, ref) => {
                             <tr key={idx} className="border-b border-black border-dashed">
                                 <td className="align-top py-2 font-bold text-[18px]">{item.quantity}</td>
                                 <td className="align-top py-2 pl-2">
-                                    <div className="font-bold uppercase text-[16px]">{item.name}</div>
+                                    <div className="font-bold uppercase text-[16px]">{item.name || item.item_name}</div>
                                     {item.note && (
                                         <div className="mt-1 py-1 px-2 border-l-4 border-black font-bold uppercase text-[15px]">
                                             MOD: {item.note}

@@ -6,7 +6,15 @@ interface ReceiptProps {
 }
 
 const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, ref) => {
-  if (!bill) return <div ref={ref} />;
+  console.log("Rendering Receipt Component - Ref Attached:", !!ref, "Bill Available:", !!bill);
+
+  if (!bill) {
+    return (
+      <div ref={ref} className="print-container-hidden" style={{ display: 'none' }}>
+        {/* Placeholder to keep ref valid while not printing */}
+      </div>
+    );
+  }
 
   const date = new Date(bill.created_at);
   const dateStr = date.toLocaleDateString('en-GB', {
@@ -21,7 +29,8 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
   });
 
   const formatNum = (num: any) => {
-    const val = Number(num) || 0;
+    const val = Number(num);
+    if (isNaN(val)) return '0';
     return val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   };
 
@@ -34,20 +43,27 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
 
   // Word-wrap at word boundaries, max maxLen chars per line
   const wrapText = (text: string, maxLen: number): string[] => {
-    const words = text.toUpperCase().split(' ');
-    const lines: string[] = [];
-    let current = '';
-    for (const word of words) {
-      const candidate = current ? `${current} ${word}` : word;
-      if (candidate.length <= maxLen) {
-        current = candidate;
-      } else {
-        if (current) lines.push(current);
-        current = word;
+    if (!text) return [''];
+    try {
+      const words = String(text).toUpperCase().split(/\s+/);
+      const lines: string[] = [];
+      let current = '';
+      for (const word of words) {
+        if (!word) continue;
+        const candidate = current ? `${current} ${word}` : word;
+        if (candidate.length <= maxLen) {
+          current = candidate;
+        } else {
+          if (current) lines.push(current);
+          current = word;
+        }
       }
+      if (current) lines.push(current);
+      return lines.length > 0 ? lines : [''];
+    } catch (e) {
+      console.error("wrapText Error:", e);
+      return [String(text).substring(0, maxLen)];
     }
-    if (current) lines.push(current);
-    return lines.length > 0 ? lines : [''];
   };
 
   const subtotal = Number(bill.subtotal) || 0;

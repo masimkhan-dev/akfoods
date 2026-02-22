@@ -219,14 +219,33 @@ const Billing = () => {
   const cart = useCartStore();
   const { user } = useAuthStore();
 
-  const handlePrint = useReactToPrint({
-    // @ts-ignore
-    content: () => receiptRef.current,
-  });
-
   const handlePrintKOT = useReactToPrint({
     // @ts-ignore
-    content: () => kotRef.current,
+    content: () => {
+      console.log("KOT Print Triggered - Ref Current:", kotRef.current);
+      return kotRef.current;
+    },
+    onAfterPrint: () => {
+      console.log("KOT Print Completed - Performing Cleanup");
+      toast.success("Order Processed: Bill & KOT Printed");
+      cart.clearCart();
+      fetchTodayOverview();
+    }
+  });
+
+  const handlePrint = useReactToPrint({
+    // @ts-ignore
+    content: () => {
+      console.log("Receipt Print Triggered - Ref Current:", receiptRef.current);
+      return receiptRef.current;
+    },
+    onAfterPrint: () => {
+      console.log("Receipt Print Dialog Closed - Scheduling KOT");
+      // Give Windows Spooler 500ms to finish Receipt buffer before sending KOT
+      setTimeout(() => {
+        handlePrintKOT();
+      }, 500);
+    }
   });
 
   const fetchSettings = useCallback(async () => {
@@ -360,16 +379,9 @@ const Billing = () => {
 
       console.timeEnd('OrderProcessing');
 
-      // Sequential Printing
-      setTimeout(() => {
-        handlePrint();
-        setTimeout(() => {
-          handlePrintKOT();
-          toast.success(`Bill ${billNumber} & KOT printed!`);
-          cart.clearCart();
-          fetchTodayOverview();
-        }, 1000);
-      }, 200);
+      // Deterministic trigger: Print components are always mounted, 
+      // but they render null-safe content based on the updated lastBill state.
+      handlePrint();
     } finally {
       setSaving(false);
     }
@@ -745,14 +757,12 @@ const Billing = () => {
         </div>
       </div>
 
-      {/* Hidden Receipt */}
-      <div className="hidden">
-        {lastBill && (
-          <ErrorBoundary>
-            <Receipt ref={receiptRef} bill={lastBill} settings={storeSettings} />
-            <KOT ref={kotRef} bill={lastBill} settings={storeSettings} />
-          </ErrorBoundary>
-        )}
+      {/* OFF-SCREEN PRINT COMPONENTS (Always Mounted for Ref Stability) */}
+      <div className="print-container-hidden" aria-hidden="true">
+        <ErrorBoundary>
+          <Receipt ref={receiptRef} bill={lastBill} settings={storeSettings} />
+          <KOT ref={kotRef} bill={lastBill} settings={storeSettings} />
+        </ErrorBoundary>
       </div>
     </div>
   );
