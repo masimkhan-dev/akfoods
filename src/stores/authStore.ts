@@ -72,9 +72,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const currentUser = session?.user ?? null;
-      set({ user: currentUser });
-      if (currentUser) {
-        await get().fetchProfile();
+      if (currentUser?.id !== get().user?.id) {
+        set({ user: currentUser });
+        if (currentUser) {
+          await get().fetchProfile();
+        }
       }
     } catch (e) {
       console.error("Auth initialization error:", e);
