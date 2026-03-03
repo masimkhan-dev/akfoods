@@ -22,11 +22,9 @@ import ProfitLoss from "./pages/reports/ProfitLoss";
 const queryClient = new QueryClient();
 
 const AppContent = () => {
-  const initialize = useAuthStore((s) => s.initialize);
-
   useEffect(() => {
-    initialize();
-  }, [initialize]);
+    useAuthStore.getState().initialize();
+  }, []);
 
   return (
     <HashRouter>

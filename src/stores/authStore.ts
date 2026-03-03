@@ -13,6 +13,7 @@ interface AuthState {
   logout: () => Promise<void>;
   initialize: () => Promise<void>;
   isInitialized: boolean;
+  _subscription: any | null;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -21,6 +22,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   username: null,
   loading: true,
   isInitialized: false,
+  _subscription: null,
 
   setUser: (user) => set({ user }),
 
@@ -53,59 +55,41 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    get()._subscription?.unsubscribe();
     await supabase.auth.signOut();
-    set({ user: null, role: null, username: null });
+    set({ user: null, role: null, username: null, _subscription: null });
   },
 
   initialize: async () => {
     if (get().isInitialized) return;
     set({ isInitialized: true, loading: true });
 
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession();
+    const currentUser = session?.user ?? null;
 
-      // If the browser returns a 429 during the very first check, 
-      // the local session is corrupted. Clear it.
-      if (error?.status === 429) {
-        console.warn("Rate limit hit during init. Clearing local session...");
-        localStorage.clear();
-        window.location.reload();
-        return;
-      }
-
-      const currentUser = session?.user ?? null;
-      set({ user: currentUser });
-      if (currentUser) {
-        await get().fetchProfile();
-      }
-      set({ loading: false });
-
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        // Stop the loop if refresh fails repeatedly
-        if ((event as string) === 'TOKEN_REFRESH_FAILED') {
-          console.error("Token refresh failed. Logging out to prevent loop.");
-          get().logout();
-          return;
-        }
-
-        const newUser = session?.user ?? null;
-        const currentUserState = get().user;
-
-        // Only update if the user has actually changed
-        if (newUser?.id !== currentUserState?.id) {
-          set({ user: newUser, loading: true });
-
-          if (newUser) {
-            await get().fetchProfile();
-          } else {
-            set({ role: null, username: null });
-          }
-          set({ loading: false });
-        }
-      });
-    } catch (e) {
-      console.error("Auth initialization error:", e);
-      set({ loading: false });
+    set({ user: currentUser });
+    if (currentUser) {
+      await get().fetchProfile();
     }
+    set({ loading: false });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const newUser = session?.user ?? null;
+      const currentUserState = get().user;
+
+      if (newUser?.id !== currentUserState?.id) {
+        set({ user: newUser });
+
+        if (newUser) {
+          set({ loading: true });
+          await get().fetchProfile();
+          set({ loading: false });
+        } else {
+          set({ role: null, username: null });
+        }
+      }
+    });
+
+    set({ _subscription: subscription });
   },
 }));
