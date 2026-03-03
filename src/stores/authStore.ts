@@ -73,9 +73,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     set({ loading: false });
 
+    // 3. Set up Auth Listener (for future changes)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const newUser = session?.user ?? null;
       const currentUserState = get().user;
+
+      console.log(`Auth Event: ${event}`, { userId: newUser?.id });
 
       if (newUser?.id !== currentUserState?.id) {
         set({ user: newUser });
@@ -92,5 +95,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ _subscription: subscription });
     console.log("Auth store: Listener registered");
+
+    // Optional: Auto-check for clock drift to help client diagnose
+    fetch('https://worldtimeapi.org/api/timezone/Etc/UTC')
+      .then(res => res.json())
+      .then(data => {
+        const drift = Math.abs(new Date(data.datetime).getTime() - Date.now()) / 1000;
+        if (drift > 60) console.error(`CRITICAL CLOCK DRIFT: ${drift}s. Supabase WILL fail.`);
+        else console.log(`Clock sync: OK (${drift}s drift)`);
+      }).catch(() => { });
   },
 }));
