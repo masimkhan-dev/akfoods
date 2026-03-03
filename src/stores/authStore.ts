@@ -12,6 +12,7 @@ interface AuthState {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   initialize: () => Promise<void>;
+  isInitialized: boolean;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -19,6 +20,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   role: null,
   username: null,
   loading: true,
+  isInitialized: false,
 
   setUser: (user) => set({ user }),
 
@@ -56,25 +58,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initialize: async () => {
-    set({ loading: true });
-    
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      const user = session?.user ?? null;
-      set({ user });
-      if (user) {
-        // Use setTimeout to avoid Supabase auth deadlock
-        setTimeout(() => get().fetchProfile(), 0);
-      } else {
-        set({ role: null, username: null });
-      }
-      set({ loading: false });
-    });
+    // 1. Singleton Initialization
+    if (get().isInitialized) return;
+    set({ isInitialized: true, loading: true });
 
+    // 2. Initial Session Check (Immediate)
     const { data: { session } } = await supabase.auth.getSession();
-    set({ user: session?.user ?? null });
-    if (session?.user) {
+    const currentUser = session?.user ?? null;
+
+    set({ user: currentUser });
+    if (currentUser) {
       await get().fetchProfile();
     }
     set({ loading: false });
+
+    // 3. Set up Auth Listener (for future changes)
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      const newUser = session?.user ?? null;
+      const currentUserState = get().user;
+
+      // Only update if the user has actually changed (prevents 429 loops)
+      if (newUser?.id !== currentUserState?.id) {
+        set({ user: newUser, loading: true });
+
+        if (newUser) {
+          await get().fetchProfile();
+        } else {
+          set({ role: null, username: null });
+        }
+        set({ loading: false });
+      }
+    });
   },
 }));
