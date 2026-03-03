@@ -62,9 +62,7 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
   const total = Number(bill.total) || 0;
   const tax = Number(bill.tax) || 0;
   const discount = Number(bill.discount) || 0;
-
-  // Since delivery charges are mathematically included in total but not saved as a separate column or item
-  const deliveryCharge = Math.round(total - subtotal - tax + discount);
+  const deliveryCharge = bill.delivery_charge !== undefined ? Number(bill.delivery_charge) : Math.round(total - subtotal - tax + discount);
   const standardItems = bill.items.filter((i: any) => (i.name || i.item_name) !== 'Delivery Charges');
 
   const totalQty = standardItems.reduce((s: number, i: any) => s + i.quantity, 0);

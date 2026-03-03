@@ -165,6 +165,436 @@ const CartItem = React.memo(({
   );
 });
 
+// Offline Persistence Utility
+const OrderQueue = {
+  dbName: 'AKF_POS_OFFLINE',
+  storeName: 'pending_orders',
+
+  async init(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(this.storeName)) {
+          request.result.createObjectStore(this.storeName, { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async push(order: any) {
+    try {
+      const db = await this.init();
+      const tx = db.transaction(this.storeName, 'readwrite');
+      const store = tx.objectStore(this.storeName);
+      return new Promise((resolve, reject) => {
+        const request = store.add({
+          id: order.idempotencyKey,
+          data: order,
+          timestamp: Date.now(),
+          attempts: 0
+        });
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (e) {
+      console.error("Offline storage failed:", e);
+    }
+  },
+
+  async remove(id: string) {
+    try {
+      const db = await this.init();
+      const tx = db.transaction(this.storeName, 'readwrite');
+      tx.objectStore(this.storeName).delete(id);
+    } catch (e) {
+      console.error("Offline removal failed:", e);
+    }
+  }
+};
+
+const TodayOverviewBar = React.memo(({
+  todayRevenue,
+  todayExpenses,
+  pendingSync
+}: {
+  todayRevenue: number;
+  todayExpenses: number;
+  pendingSync: number
+}) => {
+  const user = useAuthStore(s => s.user);
+  return (
+    <div className="bg-white/80 backdrop-blur-md border-b px-6 py-2.5 flex items-center justify-between sticky top-0 z-30">
+      <div className="flex items-center gap-8">
+        <div className="flex items-center gap-2 group">
+          <div className="p-1.5 bg-accent/10 rounded-lg group-hover:scale-110 transition-transform">
+            <TrendingUp className="w-4 h-4 text-accent" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Revenue</span>
+            <span className="text-sm font-bold text-accent tabular-nums">Rs. {todayRevenue.toLocaleString()}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 group">
+          <div className="p-1.5 bg-destructive/10 rounded-lg group-hover:scale-110 transition-transform">
+            <TrendingDown className="w-4 h-4 text-destructive" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Expenses</span>
+            <span className="text-sm font-bold text-destructive tabular-nums">Rs. {todayExpenses.toLocaleString()}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 group">
+          <div className="p-1.5 bg-primary/10 rounded-lg group-hover:scale-110 transition-transform">
+            <DollarSign className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Net Profit</span>
+            <span className={`text-sm font-bold tabular-nums ${todayRevenue - todayExpenses >= 0 ? 'text-accent' : 'text-destructive'}`}>
+              Rs. {(todayRevenue - todayExpenses).toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        {pendingSync > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-full animate-pulse">
+            <Loader2 className="w-3 h-3 text-amber-600 animate-spin" />
+            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest leading-none">
+              {pendingSync} Pending Sync
+            </span>
+          </div>
+        )}
+      </div>
+      <div className="hidden md:block">
+        <Badge variant="outline" className="text-[10px] font-bold py-1 px-3 border-border/50 bg-white/50 backdrop-blur-sm">
+          TERMINAL #{user?.id?.slice(-4).toUpperCase() || 'POS'}
+        </Badge>
+      </div>
+    </div>
+  );
+});
+
+const CustomerInfoBar = React.memo(() => {
+  const customerName = useCartStore(s => s.customerName);
+  const setCustomerName = useCartStore(s => s.setCustomerName);
+  const customerPhone = useCartStore(s => s.customerPhone);
+  const setCustomerPhone = useCartStore(s => s.setCustomerPhone);
+  const orderType = useCartStore(s => s.orderType);
+  const setOrderType = useCartStore(s => s.setOrderType);
+  const paymentMethod = useCartStore(s => s.paymentMethod);
+  const setPaymentMethod = useCartStore(s => s.setPaymentMethod);
+
+  return (
+    <div className="bg-white border-b px-6 py-4 grid grid-cols-4 gap-4 items-end">
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Customer</label>
+        <Input
+          placeholder="Search or enter name"
+          value={customerName}
+          onChange={(e) => setCustomerName(e.target.value)}
+          className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Phone</label>
+        <Input
+          placeholder="e.g. 03xx xxxxxxx"
+          value={customerPhone}
+          onChange={(e) => setCustomerPhone(e.target.value)}
+          className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Type</label>
+        <Select value={orderType} onValueChange={(v: any) => setOrderType(v)}>
+          <SelectTrigger className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm capitalize font-medium">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="dine-in" className="capitalize">Dine In</SelectItem>
+            <SelectItem value="takeaway" className="capitalize">Takeaway</SelectItem>
+            <SelectItem value="delivery" className="capitalize">Delivery</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Payment</label>
+        <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
+          <SelectTrigger className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm capitalize font-medium">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="cash" className="capitalize">Cash</SelectItem>
+            <SelectItem value="card" className="capitalize">Card</SelectItem>
+            <SelectItem value="mobile" className="capitalize">Mobile Payment</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+});
+
+const MenuSection = React.memo(({
+  categories,
+  activeCategory,
+  setActiveCategory,
+  search,
+  setSearch,
+  filteredItems,
+  onAddItem,
+  getCategoryIcon
+}: any) => {
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden border-r">
+      <div className="p-4 border-b bg-muted/5">
+        <div className="relative group">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60 group-focus-within:text-primary transition-colors" />
+          <Input
+            placeholder="Search by meal name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10 h-10 bg-white border-muted shadow-sm focus:ring-2 focus:ring-primary/10 transition-all rounded-xl"
+          />
+        </div>
+      </div>
+
+      <div className="px-4 py-2 border-b bg-white flex gap-1.5 overflow-x-auto scrollbar-thin">
+        <button
+          className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border ${activeCategory === 'all'
+            ? 'bg-primary text-white border-primary premium-shadow'
+            : 'bg-white text-muted-foreground border-muted hover:border-primary/30'}`}
+          onClick={() => setActiveCategory('all')}
+        >
+          All
+        </button>
+        {categories.map((cat: any) => (
+          <button
+            key={cat.id}
+            className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border ${activeCategory === cat.category_name
+              ? 'bg-primary text-white border-primary premium-shadow'
+              : 'bg-white text-muted-foreground border-muted hover:border-primary/30'}`}
+            onClick={() => setActiveCategory(cat.category_name)}
+          >
+            {cat.category_name}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
+        <div className="pos-grid">
+          {filteredItems.map((item: any) => (
+            <MenuItemComponent
+              key={item.id}
+              item={item}
+              onAdd={onAddItem}
+              getIcon={getCategoryIcon}
+            />
+          ))}
+        </div>
+        {filteredItems.length === 0 && (
+          <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+            No items found
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+const CartSection = React.memo(({
+  saving,
+  onPrintBill,
+  onStartEdit,
+  noteEditing,
+  onSaveEdit,
+  onCancelEdit,
+  onEditChange,
+  cartEndRef
+}: any) => {
+  const items = useCartStore(s => s.items);
+  const discount = useCartStore(s => s.discount);
+  const setDiscount = useCartStore(s => s.setDiscount);
+  const deliveryCharge = useCartStore(s => s.deliveryCharge);
+  const setDeliveryCharge = useCartStore(s => s.setDeliveryCharge);
+  const amountPaid = useCartStore(s => s.amountPaid);
+  const setAmountPaid = useCartStore(s => s.setAmountPaid);
+  const orderType = useCartStore(s => s.orderType);
+  const clearCart = useCartStore(s => s.clearCart);
+
+  const subtotal = useCartStore(s => s.getSubtotal());
+  const tax = useCartStore(s => s.getTax());
+  const taxPercentage = useCartStore(s => s.taxPercentage);
+  const total = useCartStore(s => s.getTotal());
+
+  const updateQuantity = useCartStore(s => s.updateQuantity);
+  const removeItem = useCartStore(s => s.removeItem);
+  const updateItemNote = useCartStore(s => s.updateItemNote);
+  const updateItemExtraCharge = useCartStore(s => s.updateItemExtraCharge);
+
+  return (
+    <div className="w-[390px] flex flex-col bg-white border-l shrink-0 shadow-[-10px_0_30px_rgba(0,0,0,0.02)]">
+      <div className="px-5 py-4 border-b flex items-center justify-between bg-white sticky top-0 z-20">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-primary/10 rounded-xl">
+            <ShoppingCart className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-black text-sm uppercase tracking-tighter">Current Order</h2>
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none">Terminal ACTIVE</p>
+          </div>
+        </div>
+        <Badge className="bg-primary/10 text-primary border-none font-black text-[10px] rounded-lg px-2 shadow-none">
+          {items.length} ITEMS
+        </Badge>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+        {items.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-sm">
+            <ShoppingCart className="w-8 h-8 mb-2 opacity-30" />
+            <p>Cart is empty</p>
+            <p className="text-xs">Click items to add</p>
+          </div>
+        )}
+        {items.map((item) => (
+          <CartItem
+            key={item.id}
+            item={item}
+            onUpdateQuantity={updateQuantity}
+            onRemove={removeItem}
+            onUpdateNote={updateItemNote}
+            onUpdateExtra={updateItemExtraCharge}
+            isEditing={noteEditing.id === item.id}
+            editValue={noteEditing}
+            onStartEdit={onStartEdit}
+            onSaveEdit={onSaveEdit}
+            onCancelEdit={onCancelEdit}
+            onEditChange={onEditChange}
+          />
+        ))}
+        <div ref={cartEndRef} />
+      </div>
+
+      <div className="border-t bg-muted/5 p-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 space-y-1">
+            <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Discount</label>
+            <div className="relative">
+              <Input
+                type="number"
+                min={0}
+                value={discount || ''}
+                onChange={(e) => setDiscount(Number(e.target.value) || 0)}
+                placeholder="0"
+                className="h-8 rounded-lg bg-white border-muted pr-6 text-xs"
+              />
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
+            </div>
+          </div>
+          {orderType === 'delivery' && (
+            <div className="flex-1 space-y-1">
+              <label className="text-[9px] font-bold text-primary uppercase tracking-widest pl-1">Delivery</label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  min={0}
+                  value={deliveryCharge || ''}
+                  onChange={(e) => setDeliveryCharge(Number(e.target.value) || 0)}
+                  placeholder="0"
+                  className="h-8 rounded-lg bg-white border-primary/20 focus-visible:ring-primary/20 pr-6 text-xs font-bold"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
+              </div>
+            </div>
+          )}
+          <div className="flex-1 space-y-1">
+            <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Amount Paid</label>
+            <div className="relative">
+              <Input
+                type="number"
+                min={0}
+                value={amountPaid || ''}
+                onChange={(e) => setAmountPaid(Number(e.target.value) || 0)}
+                placeholder="0"
+                className="h-8 rounded-lg bg-white border-muted pr-6 text-xs font-bold text-primary"
+              />
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 p-1">
+          <div className="flex justify-between items-center text-[11px] font-medium">
+            <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Subtotal</span>
+            <span className="tabular-nums font-bold">Rs. {subtotal.toLocaleString()}</span>
+          </div>
+
+          {discount > 0 && (
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-destructive font-bold uppercase tracking-widest text-[9px]">Discount</span>
+              <span className="text-destructive tabular-nums font-bold">-Rs. {discount.toLocaleString()}</span>
+            </div>
+          )}
+
+          {tax > 0 && (
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Tax ({taxPercentage}%)</span>
+              <span className="text-muted-foreground tabular-nums font-bold">Rs. {tax.toLocaleString()}</span>
+            </div>
+          )}
+
+          {deliveryCharge > 0 && (
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Delivery</span>
+              <span className="text-muted-foreground tabular-nums font-bold">Rs. {deliveryCharge.toLocaleString()}</span>
+            </div>
+          )}
+
+          <div className="pt-2 border-t border-muted">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-black uppercase tracking-tighter">Net Payable</span>
+              <span className="text-xl font-black text-primary tabular-nums">Rs. {total.toLocaleString()}</span>
+            </div>
+          </div>
+
+          {amountPaid > 0 && amountPaid >= total && (
+            <div className="flex justify-between items-center py-1.5 px-3 bg-accent/10 rounded-lg border border-accent/20">
+              <span className="text-[9px] font-black text-accent uppercase tracking-widest">Return</span>
+              <span className="text-sm font-black text-accent tabular-nums">Rs. {(amountPaid - total).toLocaleString()}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <Button
+            variant="outline"
+            className="flex-1 h-10 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-destructive/5 hover:text-destructive hover:border-destructive transition-all"
+            onClick={clearCart}
+            disabled={items.length === 0}
+          >
+            Clear
+          </Button>
+          <Button
+            className="flex-[2.5] h-10 rounded-xl premium-shadow font-bold text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"
+            onClick={onPrintBill}
+            disabled={items.length === 0 || saving}
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <Printer className="w-4 h-4 mr-2" />
+                Complete order
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const MenuItemComponent = React.memo(({ item, onAdd, getIcon }: { item: MenuItem; onAdd: (item: MenuItem) => void; getIcon: (cat: string) => string }) => {
   return (
     <div
@@ -197,6 +627,10 @@ const MenuItemComponent = React.memo(({ item, onAdd, getIcon }: { item: MenuItem
   );
 });
 
+const CONFIG = {
+  USE_ATOMIC_V3: true, // Feature flag for hardened order creation
+};
+
 const Billing = () => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -205,6 +639,7 @@ const Billing = () => {
   const [lastBill, setLastBill] = useState<any>(null);
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [todayExpenses, setTodayExpenses] = useState(0);
+  const [pendingSync, setPendingSync] = useState(0);
   const [storeSettings, setStoreSettings] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [noteEditing, setNoteEditing] = useState<{ id: string | null; note: string; extra: number }>({
@@ -264,7 +699,11 @@ const Billing = () => {
 
   const fetchData = useCallback(async () => {
     const [menuRes, catRes] = await Promise.all([
-      supabase.from('menu_items').select('id,item_name,category,price,image_url,is_available').eq('is_available', true).order('category'),
+      supabase.from('menu_items')
+        .select('id,item_name,category,price,image_url,is_available')
+        .eq('is_available', true)
+        .order('category')
+        .order('item_name'),
       supabase.from('categories').select('id,category_name').order('display_order'),
     ]);
     if (menuRes.data) setMenuItems(menuRes.data as MenuItem[]);
@@ -296,89 +735,133 @@ const Billing = () => {
   const cartTotal = useMemo(() => cart.getTotal(), [cart.items]);
 
   const handlePrintBill = useCallback(async () => {
-    if (cart.items.length === 0) {
-      toast.error('Cart is empty');
-      return;
-    }
-    // Fix #7: Prevent double-click from firing two bills
-    if (saving) return;
+    if (cart.items.length === 0 || saving) return;
+
+    const idempotencyKey = crypto.randomUUID();
     setSaving(true);
 
-    console.time('OrderProcessing');
+    const rpcItems = cart.items.map(item => ({
+      item_name: item.name,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+    }));
+
+    const orderPayload = {
+      p_idempotency_key: idempotencyKey,
+      p_customer_name: cart.customerName || null,
+      p_customer_phone: cart.customerPhone || null,
+      p_order_type: cart.orderType,
+      p_discount: cart.discount,
+      p_tax_rate: cart.taxPercentage / 100,
+      p_payment_method: cart.paymentMethod,
+      p_amount_paid: cart.amountPaid || 0,
+      p_delivery_charge: cart.deliveryCharge || 0,
+      p_created_by: user?.id,
+      p_items: rpcItems
+    };
+
     try {
-      const subtotal = cart.getSubtotal();
-      const tax = cart.getTax();
-      const total = cart.getTotal();
-      const change = cart.amountPaid > 0 ? cart.amountPaid - total : 0;
+      if (!CONFIG.USE_ATOMIC_V3) {
+        throw new Error("Atomic V3 migration not enabled in config.");
+      }
 
-      // Generate bill number via atomic RPC to prevent duplicates
-      const { data: billNumber, error: numError } = await supabase.rpc('generate_next_bill_number');
+      // @ts-ignore - RPC types may be out of date
+      const { data, error } = await (supabase as any).rpc('create_order_atomic_v3', orderPayload);
+      const billData = data as any;
 
-      if (numError) {
-        toast.error('Failed to generate bill number. Please retry.');
-        console.error(numError);
+      if (error || !billData?.success) {
+        // Network failure or unexpected rejection (Fetch failure means offline or server down)
+        if (!navigator.onLine || (error && error.message?.includes('Fetch'))) {
+          await OrderQueue.push({ ...orderPayload, cartItems: cart.items });
+          toast.warning("Network issue. Order queued locally.");
+          cart.clearCart(); // Clear cart to allow next order even if offline
+          return;
+        }
+        toast.error(error?.message || billData?.error || 'Order failed');
+        console.error("Order Creation Error:", error || billData?.error);
         return;
       }
 
-      // Save bill
-      const { data: billData, error: billError } = await supabase
-        .from('bills')
-        .insert({
-          bill_number: billNumber,
-          customer_name: cart.customerName || null,
-          customer_phone: cart.customerPhone || null,
-          order_type: cart.orderType,
-          subtotal,
-          discount: cart.discount,
-          tax,
-          total,
-          payment_method: cart.paymentMethod,
-          amount_paid: cart.amountPaid || total,
-          change_returned: change > 0 ? change : 0,
-          created_by: user?.id,
-        })
-        .select()
-        .single();
-
-      if (billError) {
-        toast.error('Failed to save bill');
-        console.error(billError);
-        return;
-      }
-
-      // Save bill items
-      const billItems = cart.items.map((item) => ({
-        bill_id: billData.id,
-        item_name: item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        total_price: item.totalPrice,
-      }));
-
-      const { error: itemsError } = await supabase.from('bill_items').insert(billItems);
-
-      if (itemsError) {
-        toast.error(`Items failed to record. Note bill number: ${billNumber}`);
-        console.error(itemsError);
-        return;
+      if (billData.is_duplicate) {
+        toast.info(`Order #${billData.bill_number} already processed`);
+      } else {
+        toast.success(`Order #${billData.bill_number} Processed`);
       }
 
       setLastBill({
-        ...billData,
-        items: cart.items,
-        change: change > 0 ? change : 0,
+        id: billData.bill_id,
+        bill_number: billData.bill_number,
+        customer_name: cart.customerName,
+        customer_phone: cart.customerPhone,
+        order_type: cart.orderType,
+        payment_method: cart.paymentMethod,
+        amount_paid: cart.amountPaid || billData.total,
+        subtotal: billData.subtotal,
+        discount: cart.discount,
+        tax: billData.tax,
+        total: billData.total,
+        delivery_charge: cart.deliveryCharge,
+        change_returned: billData.change_returned,
+        items: cart.items.map(i => ({ ...i, item_name: i.name })),
+        created_at: billData.created_at || new Date().toISOString()
       });
 
-      console.timeEnd('OrderProcessing');
+      // Clear cart ONLY on explicit success/duplicate
+      cart.clearCart();
 
-      // Deterministic trigger: Tiny delay to ensure React has painted the DOM with new bill data
       setTimeout(() => {
         handlePrint();
       }, 150);
+
+    } catch (err: any) {
+      console.error("Critical Transaction Error:", err);
+      await OrderQueue.push({ ...orderPayload, cartItems: cart.items });
+      toast.error('System error. Order queued.');
+      cart.clearCart();
     } finally {
       setSaving(false);
     }
-  }, [cart, user?.id, saving, handlePrint, handlePrintKOT, fetchTodayOverview]);
+  }, [cart, user?.id, saving, handlePrint]);
+
+  const processQueue = useCallback(async () => {
+    if (!navigator.onLine) return;
+
+    try {
+      const db = await OrderQueue.init();
+      const tx = db.transaction(OrderQueue.storeName, 'readonly');
+      const store = tx.objectStore(OrderQueue.storeName);
+      const request = store.getAll();
+
+      request.onsuccess = async () => {
+        const pending = request.result;
+        setPendingSync(pending.length);
+        if (pending.length === 0) return;
+
+        console.log(`Syncing ${pending.length} offline orders...`);
+        for (const item of pending) {
+          try {
+            // @ts-ignore
+            const { error } = await (supabase as any).rpc('create_order_atomic_v3', item.data);
+            if (!error) {
+              await OrderQueue.remove(item.id);
+              toast.success(`Offline order synced: ${item.id.slice(0, 8)}`);
+            }
+          } catch (e) {
+            console.error("Sync failed for item", item.id, e);
+          }
+        }
+        fetchTodayOverview();
+      };
+    } catch (e) {
+      console.error("Queue processor failed:", e);
+    }
+  }, [fetchTodayOverview]);
+
+  useEffect(() => {
+    const interval = setInterval(processQueue, 30000); // Try sync every 30s
+    processQueue(); // Initial check
+    return () => clearInterval(interval);
+  }, [processQueue]);
 
   const handleAddItem = useCallback((item: MenuItem) => {
     const start = performance.now();
@@ -436,318 +919,36 @@ const Billing = () => {
   return (
     <div className="h-screen flex flex-col bg-[#fafafa]">
       {/* Today's Overview Bar */}
-      <div className="bg-white/80 backdrop-blur-md border-b px-6 py-2.5 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-8">
-          <div className="flex items-center gap-2 group">
-            <div className="p-1.5 bg-accent/10 rounded-lg group-hover:scale-110 transition-transform">
-              <TrendingUp className="w-4 h-4 text-accent" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Revenue</span>
-              <span className="text-sm font-bold text-accent tabular-nums">Rs. {todayRevenue.toLocaleString()}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 group">
-            <div className="p-1.5 bg-destructive/10 rounded-lg group-hover:scale-110 transition-transform">
-              <TrendingDown className="w-4 h-4 text-destructive" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Expenses</span>
-              <span className="text-sm font-bold text-destructive tabular-nums">Rs. {todayExpenses.toLocaleString()}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 group">
-            <div className="p-1.5 bg-primary/10 rounded-lg group-hover:scale-110 transition-transform">
-              <DollarSign className="w-4 h-4 text-primary" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Net Profit</span>
-              <span className={`text-sm font-bold tabular-nums ${todayRevenue - todayExpenses >= 0 ? 'text-accent' : 'text-destructive'}`}>
-                Rs. {(todayRevenue - todayExpenses).toLocaleString()}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="hidden md:block">
-          <Badge variant="outline" className="text-[10px] font-bold py-1 px-3 border-border/50 bg-white/50 backdrop-blur-sm">
-            TERMINAL #{user?.id?.slice(-4).toUpperCase() || 'POS'}
-          </Badge>
-        </div>
-      </div>
+      <TodayOverviewBar todayRevenue={todayRevenue} todayExpenses={todayExpenses} pendingSync={pendingSync} />
 
       {/* Customer Info Bar */}
-      <div className="bg-white border-b px-6 py-4 grid grid-cols-4 gap-4 items-end">
-        <div className="space-y-1.5">
-          <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Customer</label>
-          <Input
-            placeholder="Search or enter name"
-            value={cart.customerName}
-            onChange={(e) => cart.setCustomerName(e.target.value)}
-            className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Phone</label>
-          <Input
-            placeholder="e.g. 03xx xxxxxxx"
-            value={cart.customerPhone}
-            onChange={(e) => cart.setCustomerPhone(e.target.value)}
-            className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Type</label>
-          <Select value={cart.orderType} onValueChange={(v: any) => cart.setOrderType(v)}>
-            <SelectTrigger className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm capitalize font-medium">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="dine-in" className="capitalize">Dine In</SelectItem>
-              <SelectItem value="takeaway" className="capitalize">Takeaway</SelectItem>
-              <SelectItem value="delivery" className="capitalize">Delivery</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Payment</label>
-          <Select value={cart.paymentMethod} onValueChange={(v: any) => cart.setPaymentMethod(v)}>
-            <SelectTrigger className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm capitalize font-medium">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="cash" className="capitalize">Cash</SelectItem>
-              <SelectItem value="card" className="capitalize">Card</SelectItem>
-              <SelectItem value="mobile" className="capitalize">Mobile Payment</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <CustomerInfoBar />
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Menu Section */}
-        <div className="flex-1 flex flex-col overflow-hidden border-r">
-          {/* Search */}
-          <div className="p-4 border-b bg-muted/5">
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60 group-focus-within:text-primary transition-colors" />
-              <Input
-                placeholder="Search by meal name..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 h-10 bg-white border-muted shadow-sm focus:ring-2 focus:ring-primary/10 transition-all rounded-xl"
-              />
-            </div>
-          </div>
-
-          {/* Category Tabs */}
-          <div className="px-4 py-2 border-b bg-white flex gap-1.5 overflow-x-auto scrollbar-thin">
-            <button
-              className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border ${activeCategory === 'all'
-                ? 'bg-primary text-white border-primary premium-shadow'
-                : 'bg-white text-muted-foreground border-muted hover:border-primary/30'}`}
-              onClick={() => setActiveCategory('all')}
-            >
-              All
-            </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border ${activeCategory === cat.category_name
-                  ? 'bg-primary text-white border-primary premium-shadow'
-                  : 'bg-white text-muted-foreground border-muted hover:border-primary/30'}`}
-                onClick={() => setActiveCategory(cat.category_name)}
-              >
-                {cat.category_name}
-              </button>
-            ))}
-          </div>
-
-          {/* Items Grid */}
-          <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
-            <div className="pos-grid">
-              {filteredItems.map((item) => (
-                <MenuItemComponent
-                  key={item.id}
-                  item={item}
-                  onAdd={handleAddItem}
-                  getIcon={getCategoryIcon}
-                />
-              ))}
-            </div>
-            {filteredItems.length === 0 && (
-              <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
-                No items found
-              </div>
-            )}
-          </div>
-        </div>
+        <MenuSection
+          categories={categories}
+          activeCategory={activeCategory}
+          setActiveCategory={setActiveCategory}
+          search={search}
+          setSearch={setSearch}
+          filteredItems={filteredItems}
+          onAddItem={handleAddItem}
+          getCategoryIcon={getCategoryIcon}
+        />
 
         {/* Cart Section */}
-        <div className="w-[390px] flex flex-col bg-white border-l shrink-0 shadow-[-10px_0_30px_rgba(0,0,0,0.02)]">
-          <div className="px-5 py-4 border-b flex items-center justify-between bg-white sticky top-0 z-20">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-primary/10 rounded-xl">
-                <ShoppingCart className="w-4 h-4 text-primary" />
-              </div>
-              <div>
-                <h2 className="font-black text-sm uppercase tracking-tighter">Current Order</h2>
-                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none">Terminal ACTIVE</p>
-              </div>
-            </div>
-            <Badge className="bg-primary/10 text-primary border-none font-black text-[10px] rounded-lg px-2 shadow-none">
-              {cart.items.length} ITEMS
-            </Badge>
-          </div>
-
-          {/* Cart Items */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
-            {cart.items.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-sm">
-                <ShoppingCart className="w-8 h-8 mb-2 opacity-30" />
-                <p>Cart is empty</p>
-                <p className="text-xs">Click items to add</p>
-              </div>
-            )}
-            {cart.items.map((item) => (
-              <CartItem
-                key={item.id}
-                item={item}
-                onUpdateQuantity={handleUpdateQuantity}
-                onRemove={handleRemoveItem}
-                onUpdateNote={handleUpdateNote}
-                onUpdateExtra={handleUpdateExtra}
-                isEditing={noteEditing.id === item.id}
-                editValue={noteEditing}
-                onStartEdit={handleStartEdit}
-                onSaveEdit={handleSaveEdit}
-                onCancelEdit={handleCancelEdit}
-                onEditChange={handleEditChange}
-              />
-            ))}
-            <div ref={cartEndRef} />
-          </div>
-
-          {/* Cart Summary Header */}
-          <div className="border-t bg-muted/5 p-3 space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 space-y-1">
-                <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Discount</label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={cart.discount || ''}
-                    onChange={(e) => cart.setDiscount(Number(e.target.value) || 0)}
-                    placeholder="0"
-                    className="h-8 rounded-lg bg-white border-muted pr-6 text-xs"
-                  />
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
-                </div>
-              </div>
-              {cart.orderType === 'delivery' && (
-                <div className="flex-1 space-y-1">
-                  <label className="text-[9px] font-bold text-primary uppercase tracking-widest pl-1">Delivery</label>
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      min={0}
-                      value={cart.deliveryCharge || ''}
-                      onChange={(e) => cart.setDeliveryCharge(Number(e.target.value) || 0)}
-                      placeholder="0"
-                      className="h-8 rounded-lg bg-white border-primary/20 focus-visible:ring-primary/20 pr-6 text-xs font-bold"
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
-                  </div>
-                </div>
-              )}
-              <div className="flex-1 space-y-1">
-                <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Amount Paid</label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={cart.amountPaid || ''}
-                    onChange={(e) => cart.setAmountPaid(Number(e.target.value) || 0)}
-                    placeholder="0"
-                    className="h-8 rounded-lg bg-white border-muted pr-6 text-xs font-bold text-primary"
-                  />
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 p-1">
-              <div className="flex justify-between items-center text-[11px] font-medium">
-                <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Subtotal</span>
-                <span className="tabular-nums font-bold">Rs. {cartSubtotal.toLocaleString()}</span>
-              </div>
-
-              {cart.discount > 0 && (
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-destructive font-bold uppercase tracking-widest text-[9px]">Discount</span>
-                  <span className="text-destructive tabular-nums font-bold">-Rs. {cart.discount.toLocaleString()}</span>
-                </div>
-              )}
-
-              {cartTax > 0 && (
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Tax ({cart.taxPercentage}%)</span>
-                  <span className="text-muted-foreground tabular-nums font-bold">Rs. {cartTax.toLocaleString()}</span>
-                </div>
-              )}
-
-              {cart.deliveryCharge > 0 && (
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Delivery</span>
-                  <span className="text-muted-foreground tabular-nums font-bold">Rs. {cart.deliveryCharge.toLocaleString()}</span>
-                </div>
-              )}
-
-              <div className="pt-2 border-t border-muted">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-black uppercase tracking-tighter">Net Payable</span>
-                  <span className="text-xl font-black text-primary tabular-nums">Rs. {cartTotal.toLocaleString()}</span>
-                </div>
-              </div>
-
-              {cart.amountPaid > 0 && cart.amountPaid >= cartTotal && (
-                <div className="flex justify-between items-center py-1.5 px-3 bg-accent/10 rounded-lg border border-accent/20">
-                  <span className="text-[9px] font-black text-accent uppercase tracking-widest">Return</span>
-                  <span className="text-sm font-black text-accent tabular-nums">Rs. {(cart.amountPaid - cartTotal).toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <Button
-                variant="outline"
-                className="flex-1 h-10 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-destructive/5 hover:text-destructive hover:border-destructive transition-all"
-                onClick={cart.clearCart}
-                disabled={cart.items.length === 0}
-              >
-                Clear
-              </Button>
-              <Button
-                className="flex-[2.5] h-10 rounded-xl premium-shadow font-bold text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"
-                onClick={handlePrintBill}
-                disabled={cart.items.length === 0 || saving}
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Printer className="w-4 h-4 mr-2" />
-                    Complete order
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <CartSection
+          saving={saving}
+          onPrintBill={handlePrintBill}
+          onStartEdit={handleStartEdit}
+          noteEditing={noteEditing}
+          onSaveEdit={handleSaveEdit}
+          onCancelEdit={handleCancelEdit}
+          onEditChange={handleEditChange}
+          cartEndRef={cartEndRef}
+        />
       </div>
 
       {/* OFF-SCREEN PRINT COMPONENTS (Always Mounted for Ref Stability) */}
