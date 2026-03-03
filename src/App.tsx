@@ -23,6 +23,7 @@ const queryClient = new QueryClient();
 
 const AppContent = () => {
   useEffect(() => {
+    console.log("AppContent: Mounted");
     useAuthStore.getState().initialize();
   }, []);
 

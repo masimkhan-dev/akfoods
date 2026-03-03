@@ -91,5 +91,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
 
     set({ _subscription: subscription });
+    console.log("Auth store: Listener registered");
   },
 }));
