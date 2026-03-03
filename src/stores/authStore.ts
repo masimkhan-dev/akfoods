@@ -64,14 +64,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (get().isInitialized) return;
     set({ isInitialized: true, loading: true });
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const currentUser = session?.user ?? null;
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
 
-    set({ user: currentUser });
-    if (currentUser) {
-      await get().fetchProfile();
+      if (error) {
+        console.error("Session retrieve error:", error.message);
+      }
+
+      const currentUser = session?.user ?? null;
+      set({ user: currentUser });
+      if (currentUser) {
+        await get().fetchProfile();
+      }
+    } catch (e) {
+      console.error("Auth initialization error:", e);
+      set({ user: null });
+    } finally {
+      set({ loading: false });
     }
-    set({ loading: false });
 
     // 3. Set up Auth Listener (for future changes)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
