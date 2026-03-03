@@ -58,36 +58,54 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initialize: async () => {
-    // 1. Singleton Initialization
     if (get().isInitialized) return;
     set({ isInitialized: true, loading: true });
 
-    // 2. Initial Session Check (Immediate)
-    const { data: { session } } = await supabase.auth.getSession();
-    const currentUser = session?.user ?? null;
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
 
-    set({ user: currentUser });
-    if (currentUser) {
-      await get().fetchProfile();
-    }
-    set({ loading: false });
-
-    // 3. Set up Auth Listener (for future changes)
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      const newUser = session?.user ?? null;
-      const currentUserState = get().user;
-
-      // Only update if the user has actually changed (prevents 429 loops)
-      if (newUser?.id !== currentUserState?.id) {
-        set({ user: newUser, loading: true });
-
-        if (newUser) {
-          await get().fetchProfile();
-        } else {
-          set({ role: null, username: null });
-        }
-        set({ loading: false });
+      // If the browser returns a 429 during the very first check, 
+      // the local session is corrupted. Clear it.
+      if (error?.status === 429) {
+        console.warn("Rate limit hit during init. Clearing local session...");
+        localStorage.clear();
+        window.location.reload();
+        return;
       }
-    });
+
+      const currentUser = session?.user ?? null;
+      set({ user: currentUser });
+      if (currentUser) {
+        await get().fetchProfile();
+      }
+      set({ loading: false });
+
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        // Stop the loop if refresh fails repeatedly
+        if ((event as string) === 'TOKEN_REFRESH_FAILED') {
+          console.error("Token refresh failed. Logging out to prevent loop.");
+          get().logout();
+          return;
+        }
+
+        const newUser = session?.user ?? null;
+        const currentUserState = get().user;
+
+        // Only update if the user has actually changed
+        if (newUser?.id !== currentUserState?.id) {
+          set({ user: newUser, loading: true });
+
+          if (newUser) {
+            await get().fetchProfile();
+          } else {
+            set({ role: null, username: null });
+          }
+          set({ loading: false });
+        }
+      });
+    } catch (e) {
+      console.error("Auth initialization error:", e);
+      set({ loading: false });
+    }
   },
 }));
