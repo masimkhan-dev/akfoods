@@ -26,7 +26,7 @@ const KOT = forwardRef<HTMLDivElement, KOTProps>(({ bill, settings }, ref) => {
     return (
         <div
             ref={ref}
-            className="print-receipt receipt-width px-3 py-4 font-mono text-black bg-white"
+            className="print-receipt receipt-width px-2 py-4 font-mono text-black bg-white"
             style={{ fontFamily: 'monospace', fontWeight: 600 }}
         >
             {/* HEADER */}
@@ -56,7 +56,7 @@ const KOT = forwardRef<HTMLDivElement, KOTProps>(({ bill, settings }, ref) => {
                 >
                     <colgroup>
                         <col style={{ width: '3ch' }} />
-                        <col style={{ width: '39ch' }} />
+                        <col style={{ width: '33ch' }} />
                     </colgroup>
                     <tbody>
                         {standardItems.map((item: any, idx: number) => (
