@@ -116,22 +116,20 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
       <p className="border-t border-black"></p>
       <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'inherit', fontSize: 'inherit' }}>
         <colgroup>
-          <col style={{ width: '15ch' }} />
-          <col style={{ width: '3ch' }} />
-          <col style={{ width: '6ch' }} />
+          <col style={{ width: '20ch' }} />
+          <col style={{ width: '4ch' }} />
           <col style={{ width: '8ch' }} />
         </colgroup>
         <thead>
           <tr style={{ borderBottom: '1px solid black' }}>
             <th className="text-left font-bold py-1">ITEM</th>
             <th className="text-right font-bold py-1">QTY</th>
-            <th className="text-right font-bold py-1">RATE</th>
             <th className="text-right font-bold py-1">TOTAL</th>
           </tr>
         </thead>
         <tbody>
           {standardItems.flatMap((item: any, idx: number) => {
-            const nameLines = wrapText(item.name || item.item_name, 15);
+            const nameLines = wrapText(item.name || item.item_name, 20);
             const basePrice = item.unitPrice ?? item.unit_price ?? 0;
             const extra = item.extraCharge ?? 0;
             const finalRate = basePrice + extra;
@@ -141,7 +139,6 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
                 <tr key={`${idx}-${lineIdx}`}>
                   <td className="align-top py-0.5">{line}</td>
                   <td className="text-right tabular-nums py-0.5">{isLastLine ? item.quantity : ''}</td>
-                  <td className="text-right tabular-nums py-0.5">{isLastLine ? formatNum(finalRate) : ''}</td>
                   <td className="text-right tabular-nums py-0.5">{isLastLine ? formatNum(item.totalPrice) : ''}</td>
                 </tr>
               );
