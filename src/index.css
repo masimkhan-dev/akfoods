@@ -122,6 +122,11 @@
     overflow: hidden;
     pointer-events: none;
   }
+
+  .receipt-width {
+    width: 74mm;
+    max-width: 74mm;
+  }
 }
 
 @media print {
@@ -134,7 +139,7 @@
   }
 
   @page {
-    size: 80mm auto portrait;
+    size: 80mm auto;
     margin: 0;
   }
 
@@ -151,9 +156,11 @@
   }
 
   .print-receipt {
-    position: absolute;
-    left: 0;
-    top: 0;
+    width: 72mm;
+    margin: 0 auto;
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
     font-weight: 500;
   }
 }

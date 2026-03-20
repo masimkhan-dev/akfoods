@@ -116,10 +116,10 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
       <p className="border-t border-black"></p>
       <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'inherit', fontSize: 'inherit' }}>
         <colgroup>
-          <col style={{ width: '18ch' }} />
+          <col style={{ width: '16ch' }} />
           <col style={{ width: '4ch' }} />
-          <col style={{ width: '7ch' }} />
-          <col style={{ width: '7ch' }} />
+          <col style={{ width: '6ch' }} />
+          <col style={{ width: '6ch' }} />
         </colgroup>
         <thead>
           <tr style={{ borderBottom: '1px solid black' }}>
@@ -131,7 +131,7 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
         </thead>
         <tbody>
           {standardItems.flatMap((item: any, idx: number) => {
-            const nameLines = wrapText(item.name || item.item_name, 18);
+            const nameLines = wrapText(item.name || item.item_name, 16);
             const basePrice = item.unitPrice ?? item.unit_price ?? 0;
             const extra = item.extraCharge ?? 0;
             const finalRate = basePrice + extra;

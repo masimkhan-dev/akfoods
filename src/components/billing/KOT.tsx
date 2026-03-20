@@ -56,7 +56,7 @@ const KOT = forwardRef<HTMLDivElement, KOTProps>(({ bill, settings }, ref) => {
                 >
                     <colgroup>
                         <col style={{ width: '3ch' }} />
-                        <col style={{ width: '33ch' }} />
+                        <col style={{ width: '29ch' }} />
                     </colgroup>
                     <tbody>
                         {standardItems.map((item: any, idx: number) => (
