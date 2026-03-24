@@ -647,6 +647,7 @@ const Billing = () => {
     note: '',
     extra: 0,
   });
+  const shouldPrintRef = useRef(false);
   const receiptRef = useRef<HTMLDivElement>(null);
   const kotRef = useRef<HTMLDivElement>(null);
   const cartEndRef = useRef<HTMLDivElement>(null);
@@ -674,6 +675,13 @@ const Billing = () => {
       }, 500);
     }
   });
+
+  useEffect(() => {
+    if (lastBill && shouldPrintRef.current) {
+      shouldPrintRef.current = false;
+      handlePrint();
+    }
+  }, [lastBill, handlePrint]);
 
   const fetchSettings = useCallback(async () => {
     const { data } = await supabase.from('settings').select('setting_key,setting_value');
@@ -809,9 +817,7 @@ const Billing = () => {
       // Clear cart ONLY on explicit success/duplicate
       cart.clearCart();
 
-      setTimeout(() => {
-        handlePrint();
-      }, 150);
+      shouldPrintRef.current = true;
 
     } catch (err: any) {
       console.error("Critical Transaction Error:", err);
