@@ -647,7 +647,7 @@ const Billing = () => {
     note: '',
     extra: 0,
   });
-  const shouldPrintRef = useRef(false);
+  const [pendingPrintId, setPendingPrintId] = useState<string | null>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
   const kotRef = useRef<HTMLDivElement>(null);
   const cartEndRef = useRef<HTMLDivElement>(null);
@@ -677,11 +677,11 @@ const Billing = () => {
   });
 
   useEffect(() => {
-    if (lastBill && shouldPrintRef.current) {
-      shouldPrintRef.current = false;
+    if (lastBill && lastBill.id === pendingPrintId) {
+      setPendingPrintId(null);
       handlePrint();
     }
-  }, [lastBill, handlePrint]);
+  }, [lastBill, pendingPrintId, handlePrint]);
 
   const fetchSettings = useCallback(async () => {
     const { data } = await supabase.from('settings').select('setting_key,setting_value');
@@ -817,7 +817,7 @@ const Billing = () => {
       // Clear cart ONLY on explicit success/duplicate
       cart.clearCart();
 
-      shouldPrintRef.current = true;
+      setPendingPrintId(billData.bill_id);
 
     } catch (err: any) {
       console.error("Critical Transaction Error:", err);
