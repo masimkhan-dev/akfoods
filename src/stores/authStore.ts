@@ -49,7 +49,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   login: async (username, password) => {
-    const email = `${username}@akfburgers.local`;
+    // If the username already looks like an email, use it directly
+    const email = username.includes('@') 
+      ? username 
+      : `${username}@akfburgers.local`;
+    
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   },
