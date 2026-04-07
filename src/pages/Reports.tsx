@@ -45,16 +45,17 @@ const Reports = () => {
 
     const { data: billsData } = await supabase
       .from('bills')
-      .select('*')
+      .select('id,bill_number,total,payment_method,created_at,order_type,customer_name')
       .gte('created_at', todayStart.toISOString())
       .lte('created_at', todayEnd.toISOString())
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(300);
 
     if (billsData) {
       setBills(billsData);
       const billIds = billsData.map((b) => b.id);
       if (billIds.length > 0) {
-        const { data: items } = await supabase.from('bill_items').select('*').in('bill_id', billIds);
+        const { data: items } = await supabase.from('bill_items').select('item_name,quantity,total_price,bill_id').in('bill_id', billIds);
         setBillItems(items || []);
       } else {
         setBillItems([]);
@@ -72,16 +73,17 @@ const Reports = () => {
 
     const { data: billsData } = await supabase
       .from('bills')
-      .select('*')
+      .select('id,bill_number,total,payment_method,created_at,order_type,customer_name')
       .gte('created_at', start.toISOString())
       .lte('created_at', end.toISOString())
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(300);
 
     if (billsData) {
       setBills(billsData);
       const billIds = billsData.map((b) => b.id);
       if (billIds.length > 0) {
-        const { data: items } = await supabase.from('bill_items').select('*').in('bill_id', billIds);
+        const { data: items } = await supabase.from('bill_items').select('item_name,quantity,total_price,bill_id').in('bill_id', billIds);
         setBillItems(items || []);
       } else {
         setBillItems([]);
@@ -126,7 +128,7 @@ const Reports = () => {
 
       <Tabs defaultValue="today" className="w-full">
         <TabsList className="bg-muted/50 p-1 rounded-xl">
-          <TabsTrigger value="today" onClick={fetchToday} className="rounded-lg px-6 data-[state=active]:premium-shadow">Today</TabsTrigger>
+          <TabsTrigger value="today" className="rounded-lg px-6 data-[state=active]:premium-shadow">Today</TabsTrigger>
           <TabsTrigger value="range" className="rounded-lg px-6 data-[state=active]:premium-shadow">Date Range</TabsTrigger>
         </TabsList>
 
