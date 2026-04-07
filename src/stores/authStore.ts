@@ -111,14 +111,5 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ _subscription: subscription });
     console.log("Auth store: Listener registered");
-
-    // Optional: Auto-check for clock drift to help client diagnose
-    fetch('https://worldtimeapi.org/api/timezone/Etc/UTC')
-      .then(res => res.json())
-      .then(data => {
-        const drift = Math.abs(new Date(data.datetime).getTime() - Date.now()) / 1000;
-        if (drift > 60) console.error(`CRITICAL CLOCK DRIFT: ${drift}s. Supabase WILL fail.`);
-        else console.log(`Clock sync: OK (${drift}s drift)`);
-      }).catch(() => { });
   },
 }));
