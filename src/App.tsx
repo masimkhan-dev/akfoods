@@ -19,7 +19,18 @@ import EditExpense from "./pages/expenses/EditExpense";
 import ExpenseReports from "./pages/expenses/ExpenseReports";
 import ProfitLoss from "./pages/reports/ProfitLoss";
 
-const queryClient = new QueryClient();
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 30 * 60 * 1000, // 30 minutes
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const AppContent = () => {
   useEffect(() => {
@@ -58,6 +69,7 @@ const App = () => (
       <Sonner position="top-center" expand={true} richColors />
       <AppContent />
     </TooltipProvider>
+    {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
   </QueryClientProvider>
 );
 

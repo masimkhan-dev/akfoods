@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, safeRequest } from '@/lib/supabase';
+import { db } from '@/lib/db';
+import { queryKeys } from '@/lib/query-keys';
+import { useCachedQuery } from '@/hooks/useCachedQuery';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queueOrder, getQueuedOrders, removeQueuedOrder } from '@/lib/offline-queue';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { Input } from '@/components/ui/input';
@@ -165,54 +170,7 @@ const CartItem = React.memo(({
   );
 });
 
-// Offline Persistence Utility
-const OrderQueue = {
-  dbName: 'AKF_POS_OFFLINE',
-  storeName: 'pending_orders',
-
-  async init(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 1);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains(this.storeName)) {
-          request.result.createObjectStore(this.storeName, { keyPath: 'id' });
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  },
-
-  async push(order: any) {
-    try {
-      const db = await this.init();
-      const tx = db.transaction(this.storeName, 'readwrite');
-      const store = tx.objectStore(this.storeName);
-      return new Promise((resolve, reject) => {
-        const request = store.add({
-          id: order.idempotencyKey,
-          data: order,
-          timestamp: Date.now(),
-          attempts: 0
-        });
-        request.onsuccess = () => resolve(true);
-        request.onerror = () => reject(request.error);
-      });
-    } catch (e) {
-      console.error("Offline storage failed:", e);
-    }
-  },
-
-  async remove(id: string) {
-    try {
-      const db = await this.init();
-      const tx = db.transaction(this.storeName, 'readwrite');
-      tx.objectStore(this.storeName).delete(id);
-    } catch (e) {
-      console.error("Offline removal failed:", e);
-    }
-  }
-};
+// Note: Legacy OrderQueue removed in favor of @/lib/offline-queue.ts
 
 const TodayOverviewBar = React.memo(({
   todayRevenue,
@@ -632,8 +590,8 @@ const CONFIG = {
 };
 
 const Billing = () => {
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const queryClient = useQueryClient();
+
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [lastBill, setLastBill] = useState<any>(null);
@@ -661,7 +619,7 @@ const Billing = () => {
     onAfterPrint: () => {
       toast.success("Order Processed: Bill & KOT Printed");
       cart.clearCart();
-      fetchTodayOverview();
+      refetchOverview();
     }
   });
 
@@ -669,7 +627,6 @@ const Billing = () => {
     // @ts-ignore
     content: () => receiptRef.current,
     onAfterPrint: () => {
-      // Give Windows Spooler 500ms to finish Receipt buffer before sending KOT
       setTimeout(() => {
         handlePrintKOT();
       }, 500);
@@ -683,46 +640,97 @@ const Billing = () => {
     }
   }, [lastBill, pendingPrintId, handlePrint]);
 
-  const fetchSettings = useCallback(async () => {
-    const { data } = await supabase.from('settings').select('setting_key,setting_value');
-    if (data) {
-      const enabled = data.find((s) => s.setting_key === 'tax_enabled')?.setting_value === 'true';
-      const percent = parseFloat(data.find((s) => s.setting_key === 'tax_percentage')?.setting_value || '0');
-      cart.setTaxConfig(enabled, percent);
-
-      const settingsMap = data.reduce((acc, s) => ({ ...acc, [s.setting_key]: s.setting_value }), {});
-      setStoreSettings(settingsMap || {});
+  // Optimized Fetching with useCachedQuery
+  const { data: menuItems = [] } = useCachedQuery(
+    queryKeys.menu,
+    () => db.getMenuItems(),
+    { 
+      persistKey: 'menu',
+      select: (data: any[]) => data.filter(item => item.is_available)
     }
-  }, [cart]);
+  );
 
-  const fetchTodayOverview = useCallback(async () => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const [revRes, expRes] = await Promise.all([
-      supabase.from('bills').select('total').gte('created_at', `${today}T00:00:00`).lte('created_at', `${today}T23:59:59`),
-      supabase.from('expenses').select('amount').eq('date', today),
-    ]);
-    setTodayRevenue(((revRes.data || []) as { total: number }[]).reduce((s, b) => s + Number(b.total), 0));
-    setTodayExpenses(((expRes.data || []) as { amount: number }[]).reduce((s, e) => s + Number(e.amount), 0));
-  }, []);
+  const { data: categories = [] } = useCachedQuery(
+    queryKeys.categories,
+    () => db.getCategories(),
+    { persistKey: 'categories' }
+  );
 
-  const fetchData = useCallback(async () => {
-    const [menuRes, catRes] = await Promise.all([
-      supabase.from('menu_items')
-        .select('id,item_name,category,price,image_url,is_available')
-        .eq('is_available', true)
-        .order('category')
-        .order('item_name'),
-      supabase.from('categories').select('id,category_name').order('display_order'),
-    ]);
-    if (menuRes.data) setMenuItems(menuRes.data as MenuItem[]);
-    if (catRes.data) setCategories(catRes.data as Category[]);
-  }, []);
+  const { data: settings = [] } = useCachedQuery(
+    queryKeys.settings,
+    () => db.getSettings(),
+    { 
+      persistKey: 'settings'
+    }
+  );
 
   useEffect(() => {
-    fetchData();
-    fetchTodayOverview();
-    fetchSettings();
-  }, [fetchData, fetchTodayOverview, fetchSettings]);
+    if (settings && settings.length > 0) {
+      const enabled = settings.find((s: any) => s.setting_key === 'tax_enabled')?.setting_value === 'true';
+      const percent = parseFloat(settings.find((s: any) => s.setting_key === 'tax_percentage')?.setting_value || '0');
+      cart.setTaxConfig(enabled, percent);
+
+      const settingsMap = settings.reduce((acc: any, s: any) => ({ ...acc, [s.setting_key]: s.setting_value }), {});
+      setStoreSettings(settingsMap || {});
+    }
+  }, [settings, cart]);
+
+  // Today's Overview Query
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const { data: overview = { revenue: 0, expenses: 0 }, refetch: refetchOverview } = useQuery({
+    queryKey: ['today_overview', today],
+    queryFn: async () => {
+      const [revRes, expRes] = await Promise.all([
+        supabase.from('bills').select('total').gte('created_at', `${today}T00:00:00`).lte('created_at', `${today}T23:59:59`),
+        supabase.from('expenses').select('amount').eq('date', today),
+      ]);
+      return {
+        revenue: ((revRes.data || []) as { total: number }[]).reduce((s, b) => s + Number(b.total), 0),
+        expenses: ((expRes.data || []) as { amount: number }[]).reduce((s, e) => s + Number(e.amount), 0)
+      };
+    }
+  });
+
+  useEffect(() => {
+    setTodayRevenue(overview.revenue);
+    setTodayExpenses(overview.expenses);
+  }, [overview]);
+
+  // Offline Sync Logic
+  useEffect(() => {
+    const syncOfflineOrders = async () => {
+      if (!navigator.onLine) return;
+      
+      const queued = await getQueuedOrders();
+      if (queued.length === 0) return;
+      
+      setPendingSync(queued.length);
+      console.log(`[Offline] 🔄 Syncing ${queued.length} orders...`);
+      
+      for (const order of queued) {
+        try {
+          const { data, error } = await (supabase as any).rpc('create_order_atomic_v3', order.payload);
+          if (!error && data?.success) {
+            await removeQueuedOrder(order.id);
+            console.log(`[Offline] ✅ Order synced: ${order.id}`);
+          }
+        } catch (e) {
+          console.error(`[Offline] ❌ Failed to sync order ${order.id}:`, e);
+        }
+      }
+      
+      const remaining = await getQueuedOrders();
+      setPendingSync(remaining.length);
+      if (remaining.length === 0) {
+        refetchOverview();
+      }
+    };
+
+    window.addEventListener('online', syncOfflineOrders);
+    syncOfflineOrders();
+    
+    return () => window.removeEventListener('online', syncOfflineOrders);
+  }, [refetchOverview]);
 
   const [debouncedSearch, setDebouncedSearch] = useState(search);
   useEffect(() => {
@@ -742,17 +750,66 @@ const Billing = () => {
   const cartTax = useMemo(() => cart.getTax(), [cart.items]);
   const cartTotal = useMemo(() => cart.getTotal(), [cart.items]);
 
+  const orderMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      // @ts-ignore
+      const { data, error } = await (supabase as any).rpc('create_order_atomic_v3', payload);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      if (data.is_duplicate) {
+        toast.info(`Order #${data.bill_number} already processed`);
+      } else {
+        toast.success(`Order #${data.bill_number} Processed`);
+      }
+
+      setLastBill({
+        id: data.bill_id,
+        bill_number: data.bill_number,
+        customer_name: cart.customerName,
+        customer_phone: cart.customerPhone,
+        order_type: cart.orderType,
+        payment_method: cart.paymentMethod,
+        amount_paid: cart.amountPaid || data.total,
+        subtotal: data.subtotal,
+        discount: cart.discount,
+        tax: data.tax,
+        total: data.total,
+        delivery_charge: cart.deliveryCharge,
+        change_returned: data.change_returned,
+        items: cart.items.map(i => ({ ...i, item_name: i.name })),
+        created_at: data.created_at || new Date().toISOString()
+      });
+
+      cart.clearCart();
+      setPendingPrintId(data.bill_id);
+      refetchOverview();
+    },
+    onError: async (error: any, payload: any) => {
+      console.error("Order Creation Error:", error);
+      
+      // If offline or fetch error, queue locally
+      if (!navigator.onLine || error.message?.includes('fetch')) {
+        await queueOrder(payload);
+        toast.warning("Network issue. Order queued locally.");
+        cart.clearCart();
+        const queued = await getQueuedOrders();
+        setPendingSync(queued.length);
+      } else {
+        toast.error(error.message || 'Order failed');
+      }
+    },
+    onSettled: () => {
+      setSaving(false);
+    }
+  });
+
   const handlePrintBill = useCallback(async () => {
     if (cart.items.length === 0 || saving) return;
 
-    const idempotencyKey = crypto.randomUUID();
     setSaving(true);
-
-    const rpcItems = cart.items.map(item => ({
-      item_name: item.name,
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-    }));
+    const idempotencyKey = crypto.randomUUID();
 
     const orderPayload = {
       p_idempotency_key: idempotencyKey,
@@ -765,109 +822,15 @@ const Billing = () => {
       p_amount_paid: cart.amountPaid || 0,
       p_delivery_charge: cart.deliveryCharge || 0,
       p_created_by: user?.id,
-      p_items: rpcItems
+      p_items: cart.items.map(item => ({
+        item_name: item.name,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+      }))
     };
 
-    try {
-      if (!CONFIG.USE_ATOMIC_V3) {
-        throw new Error("Atomic V3 migration not enabled in config.");
-      }
-
-      // @ts-ignore - RPC types may be out of date
-      const { data, error } = await (supabase as any).rpc('create_order_atomic_v3', orderPayload);
-      const billData = data as any;
-
-      if (error || !billData?.success) {
-        // Network failure or unexpected rejection (Fetch failure means offline or server down)
-        if (!navigator.onLine || (error && error.message?.includes('Fetch'))) {
-          await OrderQueue.push({ ...orderPayload, cartItems: cart.items });
-          toast.warning("Network issue. Order queued locally.");
-          cart.clearCart(); // Clear cart to allow next order even if offline
-          return;
-        }
-        toast.error(error?.message || billData?.error || 'Order failed');
-        console.error("Order Creation Error:", error || billData?.error);
-        return;
-      }
-
-      if (billData.is_duplicate) {
-        toast.info(`Order #${billData.bill_number} already processed`);
-      } else {
-        toast.success(`Order #${billData.bill_number} Processed`);
-      }
-
-      setLastBill({
-        id: billData.bill_id,
-        bill_number: billData.bill_number,
-        customer_name: cart.customerName,
-        customer_phone: cart.customerPhone,
-        order_type: cart.orderType,
-        payment_method: cart.paymentMethod,
-        amount_paid: cart.amountPaid || billData.total,
-        subtotal: billData.subtotal,
-        discount: cart.discount,
-        tax: billData.tax,
-        total: billData.total,
-        delivery_charge: cart.deliveryCharge,
-        change_returned: billData.change_returned,
-        items: cart.items.map(i => ({ ...i, item_name: i.name })),
-        created_at: billData.created_at || new Date().toISOString()
-      });
-
-      // Clear cart ONLY on explicit success/duplicate
-      cart.clearCart();
-
-      setPendingPrintId(billData.bill_id);
-
-    } catch (err: any) {
-      console.error("Critical Transaction Error:", err);
-      await OrderQueue.push({ ...orderPayload, cartItems: cart.items });
-      toast.error('System error. Order queued.');
-      cart.clearCart();
-    } finally {
-      setSaving(false);
-    }
-  }, [cart, user?.id, saving, handlePrint]);
-
-  const processQueue = useCallback(async () => {
-    if (!navigator.onLine) return;
-
-    try {
-      const db = await OrderQueue.init();
-      const tx = db.transaction(OrderQueue.storeName, 'readonly');
-      const store = tx.objectStore(OrderQueue.storeName);
-      const request = store.getAll();
-
-      request.onsuccess = async () => {
-        const pending = request.result;
-        setPendingSync(pending.length);
-        if (pending.length === 0) return;
-
-        console.log(`Syncing ${pending.length} offline orders...`);
-        for (const item of pending) {
-          try {
-            // @ts-ignore
-            const { error } = await (supabase as any).rpc('create_order_atomic_v3', item.data);
-            if (!error) {
-              await OrderQueue.remove(item.id);
-              toast.success(`Offline order synced: ${item.id.slice(0, 8)}`);
-            }
-          } catch (e) {
-            console.error("Sync failed for item", item.id, e);
-          }
-        }
-        fetchTodayOverview();
-      };
-    } catch (e) {
-      console.error("Queue processor failed:", e);
-    }
-  }, [fetchTodayOverview]);
-
-  useEffect(() => {
-    const interval = setInterval(processQueue, 30000); // Try sync every 30s
-    processQueue(); // Initial check
-    return () => clearInterval(interval);
-  }, [processQueue]);
+    orderMutation.mutate(orderPayload);
+  }, [cart, user?.id, saving, orderMutation]);
 
   const handleAddItem = useCallback((item: MenuItem) => {
     const start = performance.now();

@@ -1,5 +1,4 @@
-// Menu Management page for AKF POS
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { db } from '@/lib/db';
+import { queryKeys } from '@/lib/query-keys';
+import { invalidateCache } from '@/lib/cache-utils';
+import { useCachedQuery } from '@/hooks/useCachedQuery';
 
 interface MenuItem {
   id: string;
@@ -29,24 +33,64 @@ interface Category {
 }
 
 const MenuManagement = () => {
-  const [items, setItems] = useState<MenuItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const queryClient = useQueryClient();
+  
+  // Queries
+  const { data: items = [] } = useCachedQuery(
+    queryKeys.menu,
+    () => db.getMenuItems(),
+    { persistKey: 'menu' }
+  );
+
+  const { data: categories = [] } = useCachedQuery(
+    queryKeys.categories,
+    () => db.getCategories(),
+    { persistKey: 'categories' }
+  );
+
   const [filter, setFilter] = useState('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [form, setForm] = useState({ item_name: '', category: '', price: '', description: '', is_available: true });
   const [imageFile, setImageFile] = useState<File | null>(null);
 
-  useEffect(() => { fetchData(); }, []);
+  // Mutations
+  const saveMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      if (editingItem) {
+        return supabase.from('menu_items').update(payload).eq('id', editingItem.id);
+      } else {
+        return supabase.from('menu_items').insert(payload);
+      }
+    },
+    onSuccess: () => {
+      invalidateCache(queryClient, ['menu']);
+      toast.success(editingItem ? 'Item updated' : 'Item added');
+      setDialogOpen(false);
+    },
+    onError: () => {
+      toast.error(editingItem ? 'Update failed' : 'Insert failed');
+    }
+  });
 
-  const fetchData = async () => {
-    const [menuRes, catRes] = await Promise.all([
-      supabase.from('menu_items').select('*').order('category'),
-      supabase.from('categories').select('*').order('display_order'),
-    ]);
-    if (menuRes.data) setItems(menuRes.data);
-    if (catRes.data) setCategories(catRes.data);
-  };
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return supabase.from('menu_items').delete().eq('id', id);
+    },
+    onSuccess: () => {
+      invalidateCache(queryClient, ['menu']);
+      toast.success('Item deleted');
+    }
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async (item: MenuItem) => {
+      return supabase.from('menu_items').update({ is_available: !item.is_available }).eq('id', item.id);
+    },
+    onSuccess: () => {
+      invalidateCache(queryClient, ['menu']);
+    }
+  });
 
   const openAdd = () => {
     setEditingItem(null);
@@ -98,30 +142,16 @@ const MenuManagement = () => {
       updated_at: new Date().toISOString(),
     };
 
-    if (editingItem) {
-      const { error } = await supabase.from('menu_items').update(payload).eq('id', editingItem.id);
-      if (error) { toast.error('Update failed'); return; }
-      toast.success('Item updated');
-    } else {
-      const { error } = await supabase.from('menu_items').insert(payload);
-      if (error) { toast.error('Insert failed'); return; }
-      toast.success('Item added');
-    }
-
-    setDialogOpen(false);
-    fetchData();
+    saveMutation.mutate(payload);
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this item?')) return;
-    await supabase.from('menu_items').delete().eq('id', id);
-    toast.success('Item deleted');
-    fetchData();
+    deleteMutation.mutate(id);
   };
 
   const toggleAvailability = async (item: MenuItem) => {
-    await supabase.from('menu_items').update({ is_available: !item.is_available }).eq('id', item.id);
-    fetchData();
+    toggleMutation.mutate(item);
   };
 
   const filtered = filter === 'all' ? items : items.filter((i) => i.category === filter);

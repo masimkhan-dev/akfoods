@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { CalendarDays, TrendingUp, Receipt, DollarSign, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 interface Bill {
   id: string;
@@ -26,71 +27,50 @@ interface BillItem {
 }
 
 const Reports = () => {
-  const [bills, setBills] = useState<Bill[]>([]);
-  const [billItems, setBillItems] = useState<BillItem[]>([]);
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    fetchToday();
-  }, []);
+  const { data, isLoading: loading, refetch } = useQuery({
+    queryKey: ['reports', startDate, endDate],
+    queryFn: async () => {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
 
-  const fetchToday = async () => {
-    setLoading(true);
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
+      const { data: billsData, error: billsError } = await supabase
+        .from('bills')
+        .select('id,bill_number,total,payment_method,created_at,order_type,customer_name')
+        .gte('created_at', start.toISOString())
+        .lte('created_at', end.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(300);
 
-    const { data: billsData } = await supabase
-      .from('bills')
-      .select('id,bill_number,total,payment_method,created_at,order_type,customer_name')
-      .gte('created_at', todayStart.toISOString())
-      .lte('created_at', todayEnd.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(300);
+      if (billsError) throw billsError;
 
-    if (billsData) {
-      setBills(billsData);
-      const billIds = billsData.map((b) => b.id);
-      if (billIds.length > 0) {
-        const { data: items } = await supabase.from('bill_items').select('item_name,quantity,total_price,bill_id').in('bill_id', billIds);
-        setBillItems(items || []);
-      } else {
-        setBillItems([]);
+      let billItemsData: BillItem[] = [];
+      if (billsData && billsData.length > 0) {
+        const billIds = billsData.map((b) => b.id);
+        const { data: items, error: itemsError } = await supabase
+          .from('bill_items')
+          .select('item_name,quantity,total_price,bill_id')
+          .in('bill_id', billIds);
+        
+        if (itemsError) throw itemsError;
+        billItemsData = items || [];
       }
+
+      return {
+        bills: (billsData || []) as Bill[],
+        billItems: billItemsData
+      };
     }
-    setLoading(false);
-  };
+  });
 
-  const fetchDateRange = async () => {
-    setLoading(true);
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+  const fetchDateRange = () => refetch();
 
-    const { data: billsData } = await supabase
-      .from('bills')
-      .select('id,bill_number,total,payment_method,created_at,order_type,customer_name')
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(300);
-
-    if (billsData) {
-      setBills(billsData);
-      const billIds = billsData.map((b) => b.id);
-      if (billIds.length > 0) {
-        const { data: items } = await supabase.from('bill_items').select('item_name,quantity,total_price,bill_id').in('bill_id', billIds);
-        setBillItems(items || []);
-      } else {
-        setBillItems([]);
-      }
-    }
-    setLoading(false);
-  };
+  const bills = data?.bills || [];
+  const billItems = data?.billItems || [];
 
   const totalRevenue = bills.reduce((sum, b) => sum + Number(b.total), 0);
   const totalOrders = bills.length;

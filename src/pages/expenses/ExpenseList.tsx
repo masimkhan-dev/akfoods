@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import { Plus, Search, Pencil, Trash2, TrendingDown, Calendar, Tag, Loader2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface Expense {
   id: string;
@@ -28,14 +29,20 @@ const fmt = (n: number) => `Rs. ${Number(n).toLocaleString()}`;
 
 const ExpenseList = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { role } = useAuthStore();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterPeriod, setFilterPeriod] = useState('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Debounce logic
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(handler);
+  }, [search]);
 
   const getDateRange = useCallback(() => {
     const now = new Date();
@@ -48,32 +55,52 @@ const ExpenseList = () => {
     }
   }, [filterPeriod, customStart, customEnd]);
 
-  const fetchExpenses = useCallback(async () => {
-    setLoading(true);
-    const { start, end } = getDateRange();
-    if (!start || !end) { setLoading(false); return; }
+  // Query
+  const { start, end } = getDateRange();
+  const { data: expenses = [], isLoading: loading } = useQuery({
+    queryKey: ['expenses', start, end],
+    queryFn: async () => {
+      if (!start || !end) return [];
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('id,date,description,paid_to,payment_method,amount,created_at')
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!start && !!end
+  });
 
-    const { data } = await supabase.from('expenses').select('*').gte('date', start).lte('date', end).order('date', { ascending: false }).order('created_at', { ascending: false });
-    setExpenses(data || []);
-    setLoading(false);
-  }, [getDateRange]);
+  // Mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('expenses').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Expense deleted');
+      setDeleteId(null);
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    },
+    onError: () => {
+      toast.error('Failed to delete expense');
+    }
+  });
 
-  useEffect(() => {
-    fetchExpenses();
-  }, [fetchExpenses]);
-
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    const { error } = await supabase.from('expenses').delete().eq('id', deleteId);
-    if (error) { toast.error('Failed to delete expense'); return; }
-    toast.success('Expense deleted');
-    setDeleteId(null);
-    fetchExpenses();
+  const handleDelete = () => {
+    if (deleteId) deleteMutation.mutate(deleteId);
   };
 
-  const filtered = expenses.filter(e => {
-    return e.description.toLowerCase().includes(search.toLowerCase()) || (e.paid_to && e.paid_to.toLowerCase().includes(search.toLowerCase()));
-  });
+  const filtered = useMemo(() => {
+    return expenses.filter(e => {
+      const term = debouncedSearch.toLowerCase();
+      return e.description.toLowerCase().includes(term) || (e.paid_to && e.paid_to.toLowerCase().includes(term));
+    });
+  }, [expenses, debouncedSearch]);
 
   const totalAmount = filtered.reduce((s, e) => s + Number(e.amount), 0);
 
@@ -112,7 +139,6 @@ const ExpenseList = () => {
         )}
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
           { label: "Today's Expenses", value: fmt(todayTotal), icon: Calendar, color: 'text-destructive', bg: 'bg-destructive/10' },
@@ -133,7 +159,6 @@ const ExpenseList = () => {
         ))}
       </div>
 
-      {/* Filters */}
       <Card>
         <CardContent className="pt-4 pb-4">
           <div className="flex flex-wrap gap-3 items-end">
@@ -162,7 +187,6 @@ const ExpenseList = () => {
         </CardContent>
       </Card>
 
-      {/* Table */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">

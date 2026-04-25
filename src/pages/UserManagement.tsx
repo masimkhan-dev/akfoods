@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface UserProfile {
   id: string;
@@ -18,27 +19,53 @@ interface UserProfile {
 }
 
 const UserManagement = () => {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ username: '', password: '', role: 'cashier' });
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => { fetchUsers(); }, []);
+  // Query
+  const { data: users = [], isLoading: usersLoading } = useQuery({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const { data: profiles, error: pError } = await supabase.from('user_profiles').select('id,username,created_at').order('created_at');
+      if (pError) throw pError;
+      if (!profiles) return [];
 
-  const fetchUsers = async () => {
-    const { data: profiles } = await supabase.from('user_profiles').select('*').order('created_at');
-    if (!profiles) return;
+      const userIds = profiles.map((p) => p.id);
+      const { data: roles, error: rError } = await supabase.from('user_roles').select('user_id,role').in('user_id', userIds);
+      if (rError) throw rError;
 
-    // Get roles for each user
-    const userIds = profiles.map((p) => p.id);
-    const { data: roles } = await supabase.from('user_roles').select('*').in('user_id', userIds);
+      return profiles.map((p) => ({
+        ...p,
+        role: roles?.find((r) => r.user_id === p.id)?.role || 'cashier',
+      })) as UserProfile[];
+    }
+  });
 
-    const usersWithRoles = profiles.map((p) => ({
-      ...p,
-      role: roles?.find((r) => r.user_id === p.id)?.role || 'cashier',
-    }));
-    setUsers(usersWithRoles);
-  };
+  // Mutation
+  const addUserMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const { data, error } = await supabase.functions.invoke('quick-processor', {
+        body: payload,
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (error || data?.error) throw error || new Error(data?.error);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('User created successfully');
+      setDialogOpen(false);
+      setForm({ username: '', password: '', role: 'cashier' });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to create user');
+    }
+  });
 
   const handleAddUser = async () => {
     if (!form.username.trim() || !form.password.trim()) {
@@ -50,32 +77,10 @@ const UserManagement = () => {
       return;
     }
 
-    setLoading(true);
-    // Get the current session to pass the authorization token
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-
-    // Use edge function to create user (avoids logging out current admin)
-    const { data, error } = await supabase.functions.invoke('quick-processor', {
-      body: { username: form.username.trim(), password: form.password, role: form.role },
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-
-    if (error || data?.error) {
-      toast.error(data?.error || 'Failed to create user');
-      setLoading(false);
-      return;
-    }
-
-    toast.success('User created successfully');
-
-    setDialogOpen(false);
-    setForm({ username: '', password: '', role: 'cashier' });
-    setLoading(false);
-    fetchUsers();
+    addUserMutation.mutate({ username: form.username.trim(), password: form.password, role: form.role });
   };
+
+  const loading = addUserMutation.isPending;
 
   return (
     <div className="p-6 space-y-4 max-w-3xl">
