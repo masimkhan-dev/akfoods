@@ -54,7 +54,7 @@ export const db: DBAdapter = {
     return safeRequest(
       () => supabase
         .from('settings')
-        .select('id,setting_key,setting_value'),
+        .select('setting_key,setting_value'),
       { endpoint: 'settings' }
     );
   },
