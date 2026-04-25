@@ -610,7 +610,34 @@ const Billing = () => {
   const kotRef = useRef<HTMLDivElement>(null);
   const cartEndRef = useRef<HTMLDivElement>(null);
 
-  const cart = useCartStore();
+  const cartItems = useCartStore(s => s.items);
+  const cartCustomerName = useCartStore(s => s.customerName);
+  const cartCustomerPhone = useCartStore(s => s.customerPhone);
+  const cartOrderType = useCartStore(s => s.orderType);
+  const cartDiscount = useCartStore(s => s.discount);
+  const cartPaymentMethod = useCartStore(s => s.paymentMethod);
+  const cartAmountPaid = useCartStore(s => s.amountPaid);
+  const cartDeliveryCharge = useCartStore(s => s.deliveryCharge);
+  
+  const addItem = useCartStore(s => s.addItem);
+  const removeItem = useCartStore(s => s.removeItem);
+  const updateQuantity = useCartStore(s => s.updateQuantity);
+  const updateItemNote = useCartStore(s => s.updateItemNote);
+  const updateItemExtraCharge = useCartStore(s => s.updateItemExtraCharge);
+  const setCustomerName = useCartStore(s => s.setCustomerName);
+  const setCustomerPhone = useCartStore(s => s.setCustomerPhone);
+  const setOrderType = useCartStore(s => s.setOrderType);
+  const setDiscount = useCartStore(s => s.setDiscount);
+  const setPaymentMethod = useCartStore(s => s.setPaymentMethod);
+  const setAmountPaid = useCartStore(s => s.setAmountPaid);
+  const setDeliveryCharge = useCartStore(s => s.setDeliveryCharge);
+  const clearCart = useCartStore(s => s.clearCart);
+  const setTaxConfig = useCartStore(s => s.setTaxConfig);
+  const getSubtotal = useCartStore(s => s.getSubtotal);
+  const getTax = useCartStore(s => s.getTax);
+  const getTotal = useCartStore(s => s.getTotal);
+  const taxEnabled = useCartStore(s => s.taxEnabled);
+  const taxPercentage = useCartStore(s => s.taxPercentage);
   const { user } = useAuthStore();
 
   const handlePrintKOT = useReactToPrint({
@@ -618,7 +645,7 @@ const Billing = () => {
     content: () => kotRef.current,
     onAfterPrint: () => {
       toast.success("Order Processed: Bill & KOT Printed");
-      cart.clearCart();
+      clearCart();
       refetchOverview();
     }
   });
@@ -668,12 +695,16 @@ const Billing = () => {
     if (settings && settings.length > 0) {
       const enabled = settings.find((s: any) => s.setting_key === 'tax_enabled')?.setting_value === 'true';
       const percent = parseFloat(settings.find((s: any) => s.setting_key === 'tax_percentage')?.setting_value || '0');
-      cart.setTaxConfig(enabled, percent);
+      
+      // Only update if changed to avoid infinite loop
+      if (enabled !== taxEnabled || percent !== taxPercentage) {
+        setTaxConfig(enabled, percent);
+      }
 
       const settingsMap = settings.reduce((acc: any, s: any) => ({ ...acc, [s.setting_key]: s.setting_value }), {});
       setStoreSettings(settingsMap || {});
     }
-  }, [settings, cart]);
+  }, [settings, setTaxConfig, taxEnabled, taxPercentage]);
 
   // Today's Overview Query
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -746,9 +777,9 @@ const Billing = () => {
     });
   }, [menuItems, activeCategory, debouncedSearch]);
 
-  const cartSubtotal = useMemo(() => cart.getSubtotal(), [cart.items]);
-  const cartTax = useMemo(() => cart.getTax(), [cart.items]);
-  const cartTotal = useMemo(() => cart.getTotal(), [cart.items]);
+  const cartSubtotal = useMemo(() => getSubtotal(), [cartItems]);
+  const cartTax = useMemo(() => getTax(), [cartItems]);
+  const cartTotal = useMemo(() => getTotal(), [cartItems, cartDiscount, cartDeliveryCharge]);
 
   const orderMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -767,22 +798,22 @@ const Billing = () => {
       setLastBill({
         id: data.bill_id,
         bill_number: data.bill_number,
-        customer_name: cart.customerName,
-        customer_phone: cart.customerPhone,
-        order_type: cart.orderType,
-        payment_method: cart.paymentMethod,
-        amount_paid: cart.amountPaid || data.total,
+        customer_name: cartCustomerName,
+        customer_phone: cartCustomerPhone,
+        order_type: cartOrderType,
+        payment_method: cartPaymentMethod,
+        amount_paid: cartAmountPaid || data.total,
         subtotal: data.subtotal,
-        discount: cart.discount,
+        discount: cartDiscount,
         tax: data.tax,
         total: data.total,
-        delivery_charge: cart.deliveryCharge,
+        delivery_charge: cartDeliveryCharge,
         change_returned: data.change_returned,
-        items: cart.items.map(i => ({ ...i, item_name: i.name })),
+        items: cartItems.map(i => ({ ...i, item_name: i.name })),
         created_at: data.created_at || new Date().toISOString()
       });
 
-      cart.clearCart();
+      clearCart();
       setPendingPrintId(data.bill_id);
       refetchOverview();
     },
@@ -793,7 +824,7 @@ const Billing = () => {
       if (!navigator.onLine || error.message?.includes('fetch')) {
         await queueOrder(payload);
         toast.warning("Network issue. Order queued locally.");
-        cart.clearCart();
+        clearCart();
         const queued = await getQueuedOrders();
         setPendingSync(queued.length);
       } else {
@@ -806,23 +837,23 @@ const Billing = () => {
   });
 
   const handlePrintBill = useCallback(async () => {
-    if (cart.items.length === 0 || saving) return;
+    if (cartItems.length === 0 || saving) return;
 
     setSaving(true);
     const idempotencyKey = crypto.randomUUID();
 
     const orderPayload = {
       p_idempotency_key: idempotencyKey,
-      p_customer_name: cart.customerName || null,
-      p_customer_phone: cart.customerPhone || null,
-      p_order_type: cart.orderType,
-      p_discount: cart.discount,
-      p_tax_rate: cart.taxPercentage / 100,
-      p_payment_method: cart.paymentMethod,
-      p_amount_paid: cart.amountPaid || 0,
-      p_delivery_charge: cart.deliveryCharge || 0,
+      p_customer_name: cartCustomerName || null,
+      p_customer_phone: cartCustomerPhone || null,
+      p_order_type: cartOrderType,
+      p_discount: cartDiscount,
+      p_tax_rate: taxPercentage / 100,
+      p_payment_method: cartPaymentMethod,
+      p_amount_paid: cartAmountPaid || 0,
+      p_delivery_charge: cartDeliveryCharge || 0,
       p_created_by: user?.id,
-      p_items: cart.items.map(item => ({
+      p_items: cartItems.map(item => ({
         item_name: item.name,
         quantity: item.quantity,
         unit_price: item.unitPrice,
@@ -830,13 +861,13 @@ const Billing = () => {
     };
 
     orderMutation.mutate(orderPayload);
-  }, [cart, user?.id, saving, orderMutation]);
+  }, [cartItems, cartCustomerName, cartCustomerPhone, cartOrderType, cartDiscount, taxPercentage, cartPaymentMethod, cartAmountPaid, cartDeliveryCharge, user?.id, saving, orderMutation]);
 
   const handleAddItem = useCallback((item: MenuItem) => {
     const start = performance.now();
-    const existing = cart.items.find(i => i.id === item.id);
+    const existing = cartItems.find(i => i.id === item.id);
 
-    cart.addItem({ id: item.id, name: item.item_name, price: Number(item.price) });
+    addItem({ id: item.id, name: item.item_name, price: Number(item.price) });
 
     if (existing) {
       toast.info(`${item.item_name} quantity increased to ${existing.quantity + 1}`, {
@@ -852,21 +883,21 @@ const Billing = () => {
 
     const end = performance.now();
     if (end - start > 10) console.warn(`Slow cart addition: ${(end - start).toFixed(2)}ms`);
-  }, [cart]);
+  }, [addItem, cartItems]);
 
-  const handleUpdateQuantity = useCallback((id: string, q: number) => cart.updateQuantity(id, q), [cart]);
-  const handleRemoveItem = useCallback((id: string) => cart.removeItem(id), [cart]);
-  const handleUpdateNote = useCallback((id: string, n: string) => cart.updateItemNote(id, n), [cart]);
-  const handleUpdateExtra = useCallback((id: string, e: number) => cart.updateItemExtraCharge(id, e), [cart]);
+  const handleUpdateQuantity = useCallback((id: string, q: number) => updateQuantity(id, q), [updateQuantity]);
+  const handleRemoveItem = useCallback((id: string) => removeItem(id), [removeItem]);
+  const handleUpdateNote = useCallback((id: string, n: string) => updateItemNote(id, n), [updateItemNote]);
+  const handleUpdateExtra = useCallback((id: string, e: number) => updateItemExtraCharge(id, e), [updateItemExtraCharge]);
 
   const handleStartEdit = useCallback((item: any) => setNoteEditing({ id: item.id, note: item.note || '', extra: item.extraCharge || 0 }), []);
   const handleSaveEdit = useCallback(() => {
     if (noteEditing.id) {
-      cart.updateItemNote(noteEditing.id, noteEditing.note);
-      cart.updateItemExtraCharge(noteEditing.id, noteEditing.extra);
+      updateItemNote(noteEditing.id, noteEditing.note);
+      updateItemExtraCharge(noteEditing.id, noteEditing.extra);
       setNoteEditing({ id: null, note: '', extra: 0 });
     }
-  }, [noteEditing, cart]);
+  }, [noteEditing, updateItemNote, updateItemExtraCharge]);
   const handleCancelEdit = useCallback(() => setNoteEditing({ id: null, note: '', extra: 0 }), []);
   const handleEditChange = useCallback((field: string, val: any) => setNoteEditing(prev => ({ ...prev, [field]: val })), []);
 
