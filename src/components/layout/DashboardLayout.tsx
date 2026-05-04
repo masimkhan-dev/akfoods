@@ -1,16 +1,39 @@
 import { useState } from 'react';
 import { Navigate, Outlet, NavLink } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import {
   Flame, ReceiptText, BarChart3, UtensilsCrossed, Settings, Users,
-  LogOut, Loader2, TrendingDown, Plus, List, PieChart, DollarSign, ChevronDown, ChevronRight
+  LogOut, Loader2, TrendingDown, Plus, List, PieChart, DollarSign, ChevronDown, ChevronRight, RefreshCw
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 
 const DashboardLayout = () => {
   const { user, role, username, loading, logout } = useAuthStore();
   const [expensesOpen, setExpensesOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    try {
+      // Clear specific caches
+      localStorage.removeItem('pos-cache:menu');
+      localStorage.removeItem('pos-cache:categories');
+      localStorage.removeItem('pos-cache:settings');
+      
+      // Invalidate all queries
+      await queryClient.invalidateQueries();
+      toast.success("System data refreshed successfully");
+    } catch (e) {
+      toast.error("Failed to refresh data");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -48,6 +71,10 @@ const DashboardLayout = () => {
         <nav className="flex-1 p-2 space-y-0.5">
           <NavLink to="/dashboard/billing" className={navLinkClass}>
             <ReceiptText className="w-4 h-4" /> Billing
+          </NavLink>
+
+          <NavLink to="/dashboard/customers" className={navLinkClass}>
+            <Users className="w-4 h-4" /> Customers (Khata)
           </NavLink>
 
           {/* Reports section */}
@@ -97,6 +124,17 @@ const DashboardLayout = () => {
               <NavLink to="/dashboard/users" className={navLinkClass}><Users className="w-4 h-4" /> Users</NavLink>
             </>
           )}
+
+          <div className="pt-4 mt-4 border-t border-sidebar-border/30">
+            <button
+              onClick={handleManualRefresh}
+              disabled={refreshing}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest text-sidebar-foreground/40 hover:text-primary hover:bg-white/5 transition-all"
+            >
+              <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+              {refreshing ? 'Refreshing...' : 'Refresh System'}
+            </button>
+          </div>
         </nav>
 
         <div className="p-4 border-t border-sidebar-border/50 shrink-0 bg-black/10 backdrop-blur-sm">

@@ -187,9 +187,9 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
 
       {/* ── PAYMENT ── */}
       <div className="mt-3 text-[12px] space-y-0.5">
-        <div className="flex justify-between">
-          <span>Payment:</span>
-          <span className="font-bold uppercase">{bill.payment_method}</span>
+        <div className="flex justify-between items-center">
+          <span className="text-[11px]">Payment:</span>
+          <span className="text-[11px] font-bold uppercase">{bill.payment_method}</span>
         </div>
         <div className="flex justify-between">
           <span>Amount Paid:</span>
@@ -211,6 +211,11 @@ const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ bill, settings }, re
         </p>
       </div>
 
+      <div className="text-center pt-2 pb-1 border-t border-dotted border-black/20 mt-2">
+        <p className="text-[8px] opacity-60 tracking-[1.5px] uppercase" style={{ fontFamily: 'serif' }}>
+          Designed & Developed by <span className="font-bold">M ASIM KHAN</span>
+        </p>
+      </div>
     </div>
   );
 });

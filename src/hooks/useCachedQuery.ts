@@ -34,7 +34,7 @@ export function useCachedQuery<T>(
   const query = useQuery({
     queryKey,
     queryFn,
-    placeholderData: initialData,
+    initialData: initialData,
     ...queryOptions,
   });
 

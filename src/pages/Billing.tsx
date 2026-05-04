@@ -12,7 +12,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Minus, X, Printer, Trash2, ShoppingCart, TrendingUp, TrendingDown, DollarSign, MessageSquarePlus, Loader2 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Search, Plus, Minus, X, Printer, Trash2, ShoppingCart, TrendingUp, TrendingDown, DollarSign, MessageSquarePlus, Loader2, Check, ChevronsUpDown, Users } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import Receipt from '@/components/billing/Receipt';
 import { useReactToPrint } from 'react-to-print';
@@ -175,10 +178,12 @@ const CartItem = React.memo(({
 const TodayOverviewBar = React.memo(({
   todayRevenue,
   todayExpenses,
+  totalKhata,
   pendingSync
 }: {
   todayRevenue: number;
   todayExpenses: number;
+  totalKhata: number;
   pendingSync: number
 }) => {
   const user = useAuthStore(s => s.user);
@@ -215,6 +220,18 @@ const TodayOverviewBar = React.memo(({
           </div>
         </div>
 
+        <div className="flex items-center gap-2 group">
+          <div className="p-1.5 bg-destructive/5 rounded-lg group-hover:scale-110 transition-transform">
+            <Users className="w-4 h-4 text-destructive" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-bold text-destructive uppercase tracking-widest leading-none">Total Khata</span>
+            <span className="text-sm font-bold text-destructive tabular-nums">
+              Rs. {totalKhata.toLocaleString()}
+            </span>
+          </div>
+        </div>
+
         {pendingSync > 0 && (
           <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-full animate-pulse">
             <Loader2 className="w-3 h-3 text-amber-600 animate-spin" />
@@ -234,6 +251,8 @@ const TodayOverviewBar = React.memo(({
 });
 
 const CustomerInfoBar = React.memo(() => {
+  const customerId = useCartStore(s => s.customerId);
+  const setCustomerId = useCartStore(s => s.setCustomerId);
   const customerName = useCartStore(s => s.customerName);
   const setCustomerName = useCartStore(s => s.setCustomerName);
   const customerPhone = useCartStore(s => s.customerPhone);
@@ -243,16 +262,74 @@ const CustomerInfoBar = React.memo(() => {
   const paymentMethod = useCartStore(s => s.paymentMethod);
   const setPaymentMethod = useCartStore(s => s.setPaymentMethod);
 
+  const [open, setOpen] = useState(false);
+  const { data: customers = [] } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => db.getCustomers()
+  });
+
   return (
     <div className="bg-white border-b px-6 py-4 grid grid-cols-4 gap-4 items-end">
       <div className="space-y-1.5">
         <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Customer</label>
-        <Input
-          placeholder="Search or enter name"
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm"
-        />
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className="w-full h-10 justify-between border-muted bg-muted/20 hover:bg-white font-medium"
+            >
+              {customerName || "Walk-in Customer"}
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0 rounded-xl shadow-2xl border-primary/10">
+            <Command>
+              <CommandInput placeholder="Search Khata customers..." />
+              <CommandList>
+                <CommandEmpty className="p-4 text-xs text-center text-muted-foreground">
+                  No Khata customer found.
+                  <Button variant="link" className="text-primary h-auto p-0 ml-1 text-xs" onClick={() => setOpen(false)}>Add new in Khata page</Button>
+                </CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    onSelect={() => {
+                      setCustomerId('');
+                      setCustomerName('');
+                      setCustomerPhone('');
+                      setOpen(false);
+                    }}
+                    className="text-xs font-bold"
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", !customerId ? "opacity-100" : "opacity-0")} />
+                    Walk-in Customer (Cash)
+                  </CommandItem>
+                  {customers.map((c: any) => (
+                    <CommandItem
+                      key={c.id}
+                      onSelect={() => {
+                        setCustomerId(c.id);
+                        setCustomerName(c.name);
+                        setCustomerPhone(c.phone || '');
+                        setOpen(false);
+                      }}
+                      className="flex flex-col items-start gap-0.5 py-2"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-bold">{c.name}</span>
+                        {c.current_balance > 0 && (
+                          <Badge variant="destructive" className="text-[9px] h-4">Owes Rs. {c.current_balance}</Badge>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{c.phone || 'No phone'}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
       </div>
       <div className="space-y-1.5">
         <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Phone</label>
@@ -261,6 +338,7 @@ const CustomerInfoBar = React.memo(() => {
           value={customerPhone}
           onChange={(e) => setCustomerPhone(e.target.value)}
           className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm"
+          disabled={!!customerId}
         />
       </div>
       <div className="space-y-1.5">
@@ -279,13 +357,14 @@ const CustomerInfoBar = React.memo(() => {
       <div className="space-y-1.5">
         <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Payment</label>
         <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
-          <SelectTrigger className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm capitalize font-medium">
+          <SelectTrigger className={cn("h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm capitalize font-medium", paymentMethod === 'credit' && "bg-destructive/5 border-destructive/20 text-destructive")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="cash" className="capitalize">Cash</SelectItem>
             <SelectItem value="card" className="capitalize">Card</SelectItem>
             <SelectItem value="mobile" className="capitalize">Mobile Payment</SelectItem>
+            <SelectItem value="credit" className="capitalize font-bold text-destructive">Khata / Loan</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -595,8 +674,6 @@ const Billing = () => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [lastBill, setLastBill] = useState<any>(null);
-  const [todayRevenue, setTodayRevenue] = useState(0);
-  const [todayExpenses, setTodayExpenses] = useState(0);
   const [pendingSync, setPendingSync] = useState(0);
   const [storeSettings, setStoreSettings] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -611,6 +688,7 @@ const Billing = () => {
   const cartEndRef = useRef<HTMLDivElement>(null);
 
   const cartItems = useCartStore(s => s.items);
+  const cartCustomerId = useCartStore(s => s.customerId);
   const cartCustomerName = useCartStore(s => s.customerName);
   const cartCustomerPhone = useCartStore(s => s.customerPhone);
   const cartOrderType = useCartStore(s => s.orderType);
@@ -673,21 +751,23 @@ const Billing = () => {
     () => db.getMenuItems(),
     { 
       persistKey: 'menu',
-      select: (data: any[]) => data.filter(item => item.is_available)
+      select: (data: any[]) => data.filter(item => item.is_available),
+      staleTime: Infinity,
     }
   );
 
   const { data: categories = [] } = useCachedQuery(
     queryKeys.categories,
     () => db.getCategories(),
-    { persistKey: 'categories' }
+    { persistKey: 'categories', staleTime: Infinity }
   );
 
   const { data: settings = [] } = useCachedQuery(
     queryKeys.settings,
     () => db.getSettings(),
     { 
-      persistKey: 'settings'
+      persistKey: 'settings',
+      staleTime: Infinity, // Beast Mode: Never refetch automatically
     }
   );
 
@@ -708,24 +788,22 @@ const Billing = () => {
 
   // Today's Overview Query
   const today = format(new Date(), 'yyyy-MM-dd');
-  const { data: overview = { revenue: 0, expenses: 0 }, refetch: refetchOverview } = useQuery({
+  const { data: overview = { revenue: 0, expenses: 0, totalKhata: 0 }, refetch: refetchOverview } = useQuery({
     queryKey: ['today_overview', today],
     queryFn: async () => {
-      const [revRes, expRes] = await Promise.all([
+      const [revRes, expRes, khataRes] = await Promise.all([
         supabase.from('bills').select('total').gte('created_at', `${today}T00:00:00`).lte('created_at', `${today}T23:59:59`),
         supabase.from('expenses').select('amount').eq('date', today),
+        supabase.from('customers').select('current_balance'),
       ]);
       return {
         revenue: ((revRes.data || []) as { total: number }[]).reduce((s, b) => s + Number(b.total), 0),
-        expenses: ((expRes.data || []) as { amount: number }[]).reduce((s, e) => s + Number(e.amount), 0)
+        expenses: ((expRes.data || []) as { amount: number }[]).reduce((s, e) => s + Number(e.amount), 0),
+        totalKhata: ((khataRes.data || []) as { current_balance: number }[]).reduce((s, c) => s + Number(c.current_balance), 0)
       };
-    }
+    },
+    staleTime: 5 * 60 * 1000, // Beast Mode: 5 minutes cache for dashboard
   });
-
-  useEffect(() => {
-    setTodayRevenue(overview.revenue);
-    setTodayExpenses(overview.expenses);
-  }, [overview]);
 
   // Offline Sync Logic
   useEffect(() => {
@@ -740,7 +818,7 @@ const Billing = () => {
       
       for (const order of queued) {
         try {
-          const { data, error } = await (supabase as any).rpc('create_order_atomic_v3', order.payload);
+          const { data, error } = await (supabase as any).rpc('create_order_atomic_v4', order.payload);
           if (!error && data?.success) {
             await removeQueuedOrder(order.id);
             console.log(`[Offline] ✅ Order synced: ${order.id}`);
@@ -784,7 +862,7 @@ const Billing = () => {
   const orderMutation = useMutation({
     mutationFn: async (payload: any) => {
       // @ts-ignore
-      const { data, error } = await (supabase as any).rpc('create_order_atomic_v3', payload);
+      const { data, error } = await (supabase as any).rpc('create_order_atomic_v4', payload);
       if (error) throw error;
       return data;
     },
@@ -844,6 +922,7 @@ const Billing = () => {
 
     const orderPayload = {
       p_idempotency_key: idempotencyKey,
+      p_customer_id: cartCustomerId || null,
       p_customer_name: cartCustomerName || null,
       p_customer_phone: cartCustomerPhone || null,
       p_order_type: cartOrderType,
@@ -919,7 +998,12 @@ const Billing = () => {
   return (
     <div className="h-screen flex flex-col bg-[#fafafa]">
       {/* Today's Overview Bar */}
-      <TodayOverviewBar todayRevenue={todayRevenue} todayExpenses={todayExpenses} pendingSync={pendingSync} />
+      <TodayOverviewBar 
+        todayRevenue={overview.revenue} 
+        todayExpenses={overview.expenses} 
+        totalKhata={overview.totalKhata}
+        pendingSync={pendingSync} 
+      />
 
       {/* Customer Info Bar */}
       <CustomerInfoBar />

@@ -12,11 +12,12 @@ export interface CartItem {
 
 interface CartState {
   items: CartItem[];
+  customerId: string;
   customerName: string;
   customerPhone: string;
   orderType: 'dine-in' | 'takeaway' | 'delivery';
   discount: number;
-  paymentMethod: 'cash' | 'card' | 'mobile';
+  paymentMethod: 'cash' | 'card' | 'mobile' | 'credit';
   amountPaid: number;
   deliveryCharge: number;
   addItem: (item: { id: string; name: string; price: number }) => void;
@@ -24,11 +25,12 @@ interface CartState {
   updateQuantity: (id: string, quantity: number) => void;
   updateItemNote: (id: string, note: string) => void;
   updateItemExtraCharge: (id: string, amount: number) => void;
+  setCustomerId: (id: string) => void;
   setCustomerName: (name: string) => void;
   setCustomerPhone: (phone: string) => void;
   setOrderType: (type: 'dine-in' | 'takeaway' | 'delivery') => void;
   setDiscount: (discount: number) => void;
-  setPaymentMethod: (method: 'cash' | 'card' | 'mobile') => void;
+  setPaymentMethod: (method: 'cash' | 'card' | 'mobile' | 'credit') => void;
   setAmountPaid: (amount: number) => void;
   setDeliveryCharge: (amount: number) => void;
   clearCart: () => void;
@@ -42,6 +44,7 @@ interface CartState {
 
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
+  customerId: '',
   customerName: '',
   customerPhone: '',
   orderType: 'takeaway',
@@ -105,6 +108,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     }));
   },
 
+  setCustomerId: (customerId) => set({ customerId }),
   setCustomerName: (customerName) => set({ customerName }),
   setCustomerPhone: (customerPhone) => set({ customerPhone }),
   setOrderType: (orderType) => set({ orderType }),
@@ -114,7 +118,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   setDeliveryCharge: (deliveryCharge) => set({ deliveryCharge }),
 
   clearCart: () =>
-    set({ items: [], customerName: '', customerPhone: '', discount: 0, amountPaid: 0, orderType: 'takeaway', paymentMethod: 'cash', deliveryCharge: 0 }),
+    set({ items: [], customerId: '', customerName: '', customerPhone: '', discount: 0, amountPaid: 0, orderType: 'takeaway', paymentMethod: 'cash', deliveryCharge: 0 }),
 
   taxEnabled: false,
   taxPercentage: 0,

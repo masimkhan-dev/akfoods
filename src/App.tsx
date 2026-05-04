@@ -18,6 +18,7 @@ import ExpenseList from "./pages/expenses/ExpenseList";
 import EditExpense from "./pages/expenses/EditExpense";
 import ExpenseReports from "./pages/expenses/ExpenseReports";
 import ProfitLoss from "./pages/reports/ProfitLoss";
+import Customers from "./pages/Customers";
 
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
@@ -54,6 +55,7 @@ const AppContent = () => {
           <Route path="expenses/edit/:id" element={<EditExpense />} />
           <Route path="expenses/reports" element={<ExpenseReports />} />
           <Route path="reports/profit-loss" element={<ProfitLoss />} />
+          <Route path="customers" element={<Customers />} />
         </Route>
         <Route path="/" element={<Navigate to="/dashboard/billing" replace />} />
         <Route path="*" element={<NotFound />} />
