@@ -120,11 +120,13 @@ BEGIN
     );
   END IF;
 
-  -- Calculations
-  SELECT SUM((item->>'quantity')::NUMERIC * (item->>'unit_price')::NUMERIC)
-  INTO v_subtotal FROM jsonb_array_elements(p_items) AS item;
+  -- Calculations (Securely fetching unit prices from DB via ID)
+  SELECT SUM(mi.price * (item->>'quantity')::NUMERIC)
+  INTO v_subtotal 
+  FROM jsonb_array_elements(p_items) AS item
+  JOIN public.menu_items mi ON (mi.id = (item->>'id')::UUID OR mi.item_name = (item->>'item_name'));
 
-  IF v_subtotal IS NULL OR v_subtotal <= 0 THEN RAISE EXCEPTION 'Financial Error: Invalid subtotal'; END IF;
+  IF v_subtotal IS NULL OR v_subtotal <= 0 THEN RAISE EXCEPTION 'Financial Error: Invalid items or subtotal'; END IF;
 
   v_tax := ROUND((v_subtotal - COALESCE(p_discount, 0)) * COALESCE(p_tax_rate, 0), 2);
   v_total := (v_subtotal - COALESCE(p_discount, 0)) + v_tax + COALESCE(p_delivery_charge, 0);
@@ -143,11 +145,12 @@ BEGIN
     p_amount_paid, v_change, p_created_by, now()
   ) RETURNING id INTO v_bill_id;
 
-  -- Insert Items
+  -- Insert Items (Using verified prices)
   INSERT INTO public.bill_items (bill_id, item_name, quantity, unit_price, total_price)
-  SELECT v_bill_id, (item->>'item_name'), (item->>'quantity')::INTEGER, (item->>'unit_price')::NUMERIC,
-         ROUND((item->>'quantity')::NUMERIC * (item->>'unit_price')::NUMERIC, 2)
-  FROM jsonb_array_elements(p_items) AS item;
+  SELECT v_bill_id, COALESCE(mi.item_name, (item->>'item_name')), (item->>'quantity')::INTEGER, COALESCE(mi.price, (item->>'unit_price')::NUMERIC),
+         ROUND((item->>'quantity')::NUMERIC * COALESCE(mi.price, (item->>'unit_price')::NUMERIC), 2)
+  FROM jsonb_array_elements(p_items) AS item
+  LEFT JOIN public.menu_items mi ON (mi.id = (item->>'id')::UUID OR mi.item_name = (item->>'item_name'));
 
   -- Khata Integration
   IF p_payment_method = 'credit' AND p_customer_id IS NOT NULL THEN

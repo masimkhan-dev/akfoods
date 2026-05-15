@@ -37,6 +37,9 @@ interface CartState {
   taxEnabled: boolean;
   taxPercentage: number;
   setTaxConfig: (enabled: boolean, percentage: number) => void;
+  subtotal: number;
+  tax: number;
+  total: number;
   getSubtotal: () => number;
   getTax: () => number;
   getTotal: () => number;
@@ -56,6 +59,9 @@ export const useCartStore = create<CartState>((set, get) => ({
   addItem: (item) => {
     set((state) => {
       const existing = state.items.find((i) => i.id === item.id);
+      const name = (item as any).item_name || (item as any).name;
+      const price = (item as any).price || (item as any).unitPrice;
+
       if (existing) {
         return {
           items: state.items.map((i) =>
@@ -70,7 +76,13 @@ export const useCartStore = create<CartState>((set, get) => ({
         };
       }
       return {
-        items: [...state.items, { id: item.id, name: item.name, quantity: 1, unitPrice: item.price, totalPrice: item.price }],
+        items: [...state.items, { 
+          id: item.id, 
+          name: name, 
+          quantity: 1, 
+          unitPrice: price, 
+          totalPrice: price 
+        }],
       };
     });
   },
@@ -124,21 +136,33 @@ export const useCartStore = create<CartState>((set, get) => ({
   taxPercentage: 0,
   setTaxConfig: (taxEnabled, taxPercentage) => set({ taxEnabled, taxPercentage }),
 
-  getSubtotal: () => get().items.reduce((sum, item) => sum + item.totalPrice, 0),
-
-  getTax: () => {
-    if (!get().taxEnabled) return 0;
-    const subtotal = get().getSubtotal();
-    const discount = get().discount;
-    // Financial rounding safety (2 decimal places)
-    return Math.round(((subtotal - discount) * (get().taxPercentage / 100)) * 100) / 100;
+  // Helpers (internal)
+  _calculateTotals: (items: CartItem[], discount: number, deliveryCharge: number, taxEnabled: boolean, taxPercentage: number) => {
+    const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+    const tax = taxEnabled ? Math.round(((subtotal - discount) * (taxPercentage / 100)) * 100) / 100 : 0;
+    const total = Math.max(0, subtotal + tax - discount + (deliveryCharge || 0));
+    return { subtotal, tax, total };
   },
 
-  getTotal: () => {
-    const subtotal = get().getSubtotal();
-    const tax = get().getTax();
-    const discount = get().discount;
-    const dev = get().deliveryCharge || 0;
-    return Math.max(0, subtotal + tax - discount + dev);
-  },
+  // State
+  subtotal: 0,
+  tax: 0,
+  total: 0,
+
+  getSubtotal: () => get().subtotal,
+  getTax: () => get().tax,
+  getTotal: () => get().total,
 }));
+
+// Add middleware-like update to ensure totals are always synced
+const originalSet = useCartStore.setState;
+useCartStore.setState = (fn: any, replace: any) => {
+  originalSet((state: any) => {
+    const nextState = typeof fn === 'function' ? fn(state) : fn;
+    const merged = { ...state, ...nextState };
+    const { subtotal, tax, total } = (useCartStore.getState() as any)._calculateTotals(
+      merged.items, merged.discount, merged.deliveryCharge, merged.taxEnabled, merged.taxPercentage
+    );
+    return { ...nextState, subtotal, tax, total };
+  }, replace);
+};

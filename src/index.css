@@ -95,8 +95,29 @@
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
   }
 
+  .lite-mode .premium-shadow {
+    box-shadow: none !important;
+    border: 1px solid hsla(var(--border));
+  }
+
+  .lite-mode .glass-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: white !important;
+  }
+
+  .lite-mode * {
+    transition: none !important;
+    animation: none !important;
+  }
+
   .premium-hover {
     @apply hover:scale-[1.02] hover:premium-shadow transition-all duration-300;
+  }
+
+  .lite-mode .premium-hover {
+    @apply hover:scale-100 hover:bg-muted/10;
+    transition: none !important;
   }
 
   .pos-grid {

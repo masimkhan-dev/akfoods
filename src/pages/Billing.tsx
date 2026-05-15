@@ -1,26 +1,24 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { supabase, safeRequest } from '@/lib/supabase';
+import { useShallow } from 'zustand/react/shallow';
+import { supabase } from '@/lib/supabase';
 import { db } from '@/lib/db';
-import { queryKeys } from '@/lib/query-keys';
-import { useCachedQuery } from '@/hooks/useCachedQuery';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queueOrder, getQueuedOrders, removeQueuedOrder } from '@/lib/offline-queue';
 import { useCartStore } from '@/stores/cartStore';
 import { useAuthStore } from '@/stores/authStore';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Search, Plus, Minus, X, Printer, Trash2, ShoppingCart, TrendingUp, TrendingDown, DollarSign, MessageSquarePlus, Loader2, Check, ChevronsUpDown, Users } from 'lucide-react';
+import { Search, Printer, ShoppingCart, Loader2, Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import Receipt from '@/components/billing/Receipt';
 import { useReactToPrint } from 'react-to-print';
-import { format } from 'date-fns';
+import Receipt from '@/components/billing/Receipt';
 import KOT from '@/components/billing/KOT';
+import { useBillingData, useOfflineSync, useOrderProcessing } from '@/hooks/useBilling';
+import { TodayOverviewBar, MenuItemComponent } from '@/components/billing/BillingUI';
+import { useQuery } from '@tanstack/react-query';
 
 // Simple Error Boundary for resilience
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -29,1017 +27,237 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     this.state = { hasError: false };
   }
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("Print Component Error:", error, errorInfo);
-  }
   render() {
-    if (this.state.hasError) {
-      return <div className="p-4 bg-destructive/10 text-destructive text-xs rounded-lg">Print preview failed to load.</div>;
-    }
+    if (this.state.hasError) return <div className="p-4 bg-destructive/10 text-destructive text-xs rounded-lg">Component failed to load.</div>;
     return this.props.children;
   }
 }
 
-interface MenuItem {
-  id: string;
-  item_name: string;
-  category: string;
-  price: number;
-  description: string | null;
-  image_url: string | null;
-  is_available: boolean;
-}
-
-interface Category {
-  id: string;
-  category_name: string;
-  display_order: number;
-}
-
-const CartItem = React.memo(({
-  item,
-  onUpdateQuantity,
-  onRemove,
-  onUpdateNote,
-  onUpdateExtra,
-  isEditing,
-  editValue,
-  onStartEdit,
-  onSaveEdit,
-  onCancelEdit,
-  onEditChange
-}: {
-  item: any;
-  onUpdateQuantity: (id: string, q: number) => void;
-  onRemove: (id: string) => void;
-  onUpdateNote: (id: string, n: string) => void;
-  onUpdateExtra: (id: string, e: number) => void;
-  isEditing: boolean;
-  editValue: { note: string; extra: number };
-  onStartEdit: (item: any) => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
-  onEditChange: (field: string, val: any) => void;
-}) => {
-  return (
-    <div className="p-2 rounded-xl bg-[#fcfcfc] border border-muted/50 premium-hover transition-all animate-in fade-in slide-in-from-right-2 duration-300 relative overflow-hidden group mb-1">
-      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary/20 group-hover:bg-primary transition-colors" />
-
-      <div className="flex items-start justify-between gap-1.5">
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-[11px] tracking-tight truncate group-hover:text-primary transition-colors leading-tight">{item.name}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[9px] font-black text-primary tabular-nums">Rs. {item.unitPrice.toLocaleString()}</span>
-            <span className="text-[9px] text-muted-foreground/40">×</span>
-            <span className="text-[9px] font-bold text-muted-foreground/70">{item.quantity}</span>
-          </div>
-        </div>
-        <div className="text-right">
-          <p className="font-black text-[11px] tabular-nums text-foreground leading-tight">Rs. {item.totalPrice.toLocaleString()}</p>
-          <button
-            onClick={() => onRemove(item.id)}
-            className="text-[8px] font-extrabold text-destructive/30 hover:text-destructive uppercase tracking-widest transition-colors mt-0.5"
-          >
-            Remove
-          </button>
+const CartItem = React.memo(({ item, onUpdateQuantity, onRemove, onStartEdit, isEditing, editValue, onSaveEdit, onEditChange }: any) => (
+  <div className="p-2 rounded-xl bg-[#fcfcfc] border border-muted/50 premium-hover transition-all animate-in fade-in slide-in-from-right-2 duration-300 relative overflow-hidden group mb-1">
+    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary/20 group-hover:bg-primary transition-colors" />
+    <div className="flex items-start justify-between gap-1.5">
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-[11px] tracking-tight truncate group-hover:text-primary transition-colors leading-tight">{item.name}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-[9px] font-black text-primary tabular-nums">Rs. {item.unitPrice.toLocaleString()}</span>
+          <span className="text-[9px] text-muted-foreground/40">×</span>
+          <span className="text-[9px] font-bold text-muted-foreground/70">{item.quantity}</span>
         </div>
       </div>
-
-      <div className="flex items-center justify-between mt-1 gap-1.5">
-        <div className="flex items-center bg-white border border-muted rounded-lg p-0.5 shadow-sm">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 rounded-md hover:bg-primary/5 hover:text-primary"
-            onClick={() => item.quantity === 1 ? onRemove(item.id) : onUpdateQuantity(item.id, item.quantity - 1)}
-          >
-            <Minus className="w-2 h-2" />
-          </Button>
-          <span className="w-6 text-center font-black text-[10px] tabular-nums">{item.quantity}</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 rounded-md hover:bg-primary/5 hover:text-primary"
-            onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-          >
-            <Plus className="w-2 h-2" />
-          </Button>
-        </div>
-
-        <div className="flex-1">
-          {isEditing ? (
-            <div className="flex gap-1.5 animate-in slide-in-from-left-1 duration-200">
-              <Input
-                value={editValue.note}
-                onChange={(e) => onEditChange('note', e.target.value)}
-                placeholder="Special instruction..."
-                className="h-8 text-[11px] flex-[2] rounded-lg border-primary/20"
-                autoFocus
-              />
-              <Input
-                type="number"
-                value={editValue.extra || ''}
-                onChange={(e) => onEditChange('extra', Number(e.target.value) || 0)}
-                placeholder="+Rs"
-                className="h-8 text-[11px] flex-1 rounded-lg border-primary/20"
-              />
-              <Button
-                size="sm"
-                className="h-8 px-3 rounded-lg text-[10px] font-bold uppercase tracking-widest"
-                onClick={onSaveEdit}
-              >
-                Save
-              </Button>
-            </div>
-          ) : (
-            <div
-              className="flex items-center gap-1 text-[10px] text-muted-foreground/60 cursor-pointer hover:text-primary transition-colors italic w-full p-1 rounded hover:bg-primary/5 group/note"
-              onClick={() => onStartEdit(item)}
-            >
-              <MessageSquarePlus className="w-3 h-3 group-hover/note:scale-110 transition-transform" />
-              {item.note || item.extraCharge ? (
-                <span className="font-medium">
-                  {item.note ? `"${item.note}" ` : ''}
-                  {item.extraCharge ? <span className="text-primary not-italic ml-1">(+Rs. {item.extraCharge})</span> : ''}
-                </span>
-              ) : (
-                "Add custom instructions..."
-              )}
-            </div>
-          )}
-        </div>
+      <div className="text-right">
+        <p className="font-black text-[11px] tabular-nums text-foreground leading-tight">Rs. {item.totalPrice.toLocaleString()}</p>
+        <button onClick={() => onRemove(item.id)} className="text-[8px] font-extrabold text-destructive/30 hover:text-destructive uppercase tracking-widest transition-colors mt-0.5">Remove</button>
       </div>
     </div>
-  );
-});
-
-// Note: Legacy OrderQueue removed in favor of @/lib/offline-queue.ts
-
-const TodayOverviewBar = React.memo(({
-  todayRevenue,
-  todayExpenses,
-  totalKhata,
-  pendingSync
-}: {
-  todayRevenue: number;
-  todayExpenses: number;
-  totalKhata: number;
-  pendingSync: number
-}) => {
-  const user = useAuthStore(s => s.user);
-  return (
-    <div className="bg-white/80 backdrop-blur-md border-b px-6 py-2.5 flex items-center justify-between sticky top-0 z-30">
-      <div className="flex items-center gap-8">
-        <div className="flex items-center gap-2 group">
-          <div className="p-1.5 bg-accent/10 rounded-lg group-hover:scale-110 transition-transform">
-            <TrendingUp className="w-4 h-4 text-accent" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Revenue</span>
-            <span className="text-sm font-bold text-accent tabular-nums">Rs. {todayRevenue.toLocaleString()}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 group">
-          <div className="p-1.5 bg-destructive/10 rounded-lg group-hover:scale-110 transition-transform">
-            <TrendingDown className="w-4 h-4 text-destructive" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Expenses</span>
-            <span className="text-sm font-bold text-destructive tabular-nums">Rs. {todayExpenses.toLocaleString()}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 group">
-          <div className="p-1.5 bg-primary/10 rounded-lg group-hover:scale-110 transition-transform">
-            <DollarSign className="w-4 h-4 text-primary" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Net Profit</span>
-            <span className={`text-sm font-bold tabular-nums ${todayRevenue - todayExpenses >= 0 ? 'text-accent' : 'text-destructive'}`}>
-              Rs. {(todayRevenue - todayExpenses).toLocaleString()}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 group">
-          <div className="p-1.5 bg-destructive/5 rounded-lg group-hover:scale-110 transition-transform">
-            <Users className="w-4 h-4 text-destructive" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-destructive uppercase tracking-widest leading-none">Total Khata</span>
-            <span className="text-sm font-bold text-destructive tabular-nums">
-              Rs. {totalKhata.toLocaleString()}
-            </span>
-          </div>
-        </div>
-
-        {pendingSync > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-full animate-pulse">
-            <Loader2 className="w-3 h-3 text-amber-600 animate-spin" />
-            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest leading-none">
-              {pendingSync} Pending Sync
-            </span>
-          </div>
-        )}
+    <div className="flex items-center justify-between mt-1 gap-1.5">
+      <div className="flex items-center bg-white border border-muted rounded-lg p-0.5 shadow-sm">
+        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => item.quantity === 1 ? onRemove(item.id) : onUpdateQuantity(item.id, item.quantity - 1)}>
+          <span className="text-xs">−</span>
+        </Button>
+        <span className="w-6 text-center font-black text-[10px] tabular-nums">{item.quantity}</span>
+        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}>
+          <span className="text-xs">+</span>
+        </Button>
       </div>
-      <div className="hidden md:block">
-        <Badge variant="outline" className="text-[10px] font-bold py-1 px-3 border-border/50 bg-white/50 backdrop-blur-sm">
-          TERMINAL #{user?.id?.slice(-4).toUpperCase() || 'POS'}
-        </Badge>
-      </div>
-    </div>
-  );
-});
-
-const CustomerInfoBar = React.memo(() => {
-  const customerId = useCartStore(s => s.customerId);
-  const setCustomerId = useCartStore(s => s.setCustomerId);
-  const customerName = useCartStore(s => s.customerName);
-  const setCustomerName = useCartStore(s => s.setCustomerName);
-  const customerPhone = useCartStore(s => s.customerPhone);
-  const setCustomerPhone = useCartStore(s => s.setCustomerPhone);
-  const orderType = useCartStore(s => s.orderType);
-  const setOrderType = useCartStore(s => s.setOrderType);
-  const paymentMethod = useCartStore(s => s.paymentMethod);
-  const setPaymentMethod = useCartStore(s => s.setPaymentMethod);
-
-  const [open, setOpen] = useState(false);
-  const { data: customers = [] } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => db.getCustomers()
-  });
-
-  return (
-    <div className="bg-white border-b px-6 py-4 grid grid-cols-4 gap-4 items-end">
-      <div className="space-y-1.5">
-        <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Customer</label>
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={open}
-              className="w-full h-10 justify-between border-muted bg-muted/20 hover:bg-white font-medium"
-            >
-              {customerName || "Walk-in Customer"}
-              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[300px] p-0 rounded-xl shadow-2xl border-primary/10">
-            <Command>
-              <CommandInput placeholder="Search Khata customers..." />
-              <CommandList>
-                <CommandEmpty className="p-4 text-xs text-center text-muted-foreground">
-                  No Khata customer found.
-                  <Button variant="link" className="text-primary h-auto p-0 ml-1 text-xs" onClick={() => setOpen(false)}>Add new in Khata page</Button>
-                </CommandEmpty>
-                <CommandGroup>
-                  <CommandItem
-                    onSelect={() => {
-                      setCustomerId('');
-                      setCustomerName('');
-                      setCustomerPhone('');
-                      setOpen(false);
-                    }}
-                    className="text-xs font-bold"
-                  >
-                    <Check className={cn("mr-2 h-4 w-4", !customerId ? "opacity-100" : "opacity-0")} />
-                    Walk-in Customer (Cash)
-                  </CommandItem>
-                  {customers.map((c: any) => (
-                    <CommandItem
-                      key={c.id}
-                      onSelect={() => {
-                        setCustomerId(c.id);
-                        setCustomerName(c.name);
-                        setCustomerPhone(c.phone || '');
-                        setOpen(false);
-                      }}
-                      className="flex flex-col items-start gap-0.5 py-2"
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span className="font-bold">{c.name}</span>
-                        {c.current_balance > 0 && (
-                          <Badge variant="destructive" className="text-[9px] h-4">Owes Rs. {c.current_balance}</Badge>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground">{c.phone || 'No phone'}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-      </div>
-      <div className="space-y-1.5">
-        <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Phone</label>
-        <Input
-          placeholder="e.g. 03xx xxxxxxx"
-          value={customerPhone}
-          onChange={(e) => setCustomerPhone(e.target.value)}
-          className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm"
-          disabled={!!customerId}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Type</label>
-        <Select value={orderType} onValueChange={(v: any) => setOrderType(v)}>
-          <SelectTrigger className="h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm capitalize font-medium">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="dine-in" className="capitalize">Dine In</SelectItem>
-            <SelectItem value="takeaway" className="capitalize">Takeaway</SelectItem>
-            <SelectItem value="delivery" className="capitalize">Delivery</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1.5">
-        <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Payment</label>
-        <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
-          <SelectTrigger className={cn("h-10 border-muted bg-muted/20 focus:bg-white transition-all shadow-sm capitalize font-medium", paymentMethod === 'credit' && "bg-destructive/5 border-destructive/20 text-destructive")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="cash" className="capitalize">Cash</SelectItem>
-            <SelectItem value="card" className="capitalize">Card</SelectItem>
-            <SelectItem value="mobile" className="capitalize">Mobile Payment</SelectItem>
-            <SelectItem value="credit" className="capitalize font-bold text-destructive">Khata / Loan</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-});
-
-const MenuSection = React.memo(({
-  categories,
-  activeCategory,
-  setActiveCategory,
-  search,
-  setSearch,
-  filteredItems,
-  onAddItem,
-  getCategoryIcon
-}: any) => {
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden border-r">
-      <div className="p-4 border-b bg-muted/5">
-        <div className="relative group">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60 group-focus-within:text-primary transition-colors" />
-          <Input
-            placeholder="Search by meal name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 h-10 bg-white border-muted shadow-sm focus:ring-2 focus:ring-primary/10 transition-all rounded-xl"
-          />
-        </div>
-      </div>
-
-      <div className="px-4 py-2 border-b bg-white flex gap-1.5 overflow-x-auto scrollbar-thin">
-        <button
-          className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border ${activeCategory === 'all'
-            ? 'bg-primary text-white border-primary premium-shadow'
-            : 'bg-white text-muted-foreground border-muted hover:border-primary/30'}`}
-          onClick={() => setActiveCategory('all')}
-        >
-          All
-        </button>
-        {categories.map((cat: any) => (
-          <button
-            key={cat.id}
-            className={`whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all duration-300 border ${activeCategory === cat.category_name
-              ? 'bg-primary text-white border-primary premium-shadow'
-              : 'bg-white text-muted-foreground border-muted hover:border-primary/30'}`}
-            onClick={() => setActiveCategory(cat.category_name)}
-          >
-            {cat.category_name}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
-        <div className="pos-grid">
-          {filteredItems.map((item: any) => (
-            <MenuItemComponent
-              key={item.id}
-              item={item}
-              onAdd={onAddItem}
-              getIcon={getCategoryIcon}
-            />
-          ))}
-        </div>
-        {filteredItems.length === 0 && (
-          <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
-            No items found
+      <div className="flex-1">
+        {isEditing ? (
+          <div className="flex gap-1.5">
+            <Input value={editValue.note} onChange={(e) => onEditChange('note', e.target.value)} placeholder="Note..." className="h-8 text-[11px] flex-[2]" autoFocus />
+            <Input type="number" value={editValue.extra || ''} onChange={(e) => onEditChange('extra', Number(e.target.value) || 0)} placeholder="+Rs" className="h-8 text-[11px] flex-1" />
+            <Button size="sm" className="h-8 px-3 text-[10px]" onClick={onSaveEdit}>Save</Button>
           </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-const CartSection = React.memo(({
-  saving,
-  onPrintBill,
-  onStartEdit,
-  noteEditing,
-  onSaveEdit,
-  onCancelEdit,
-  onEditChange,
-  cartEndRef
-}: any) => {
-  const items = useCartStore(s => s.items);
-  const discount = useCartStore(s => s.discount);
-  const setDiscount = useCartStore(s => s.setDiscount);
-  const deliveryCharge = useCartStore(s => s.deliveryCharge);
-  const setDeliveryCharge = useCartStore(s => s.setDeliveryCharge);
-  const amountPaid = useCartStore(s => s.amountPaid);
-  const setAmountPaid = useCartStore(s => s.setAmountPaid);
-  const orderType = useCartStore(s => s.orderType);
-  const clearCart = useCartStore(s => s.clearCart);
-
-  const subtotal = useCartStore(s => s.getSubtotal());
-  const tax = useCartStore(s => s.getTax());
-  const taxPercentage = useCartStore(s => s.taxPercentage);
-  const total = useCartStore(s => s.getTotal());
-
-  const updateQuantity = useCartStore(s => s.updateQuantity);
-  const removeItem = useCartStore(s => s.removeItem);
-  const updateItemNote = useCartStore(s => s.updateItemNote);
-  const updateItemExtraCharge = useCartStore(s => s.updateItemExtraCharge);
-
-  return (
-    <div className="w-[390px] flex flex-col bg-white border-l shrink-0 shadow-[-10px_0_30px_rgba(0,0,0,0.02)]">
-      <div className="px-5 py-4 border-b flex items-center justify-between bg-white sticky top-0 z-20">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-primary/10 rounded-xl">
-            <ShoppingCart className="w-4 h-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="font-black text-sm uppercase tracking-tighter">Current Order</h2>
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none">Terminal ACTIVE</p>
-          </div>
-        </div>
-        <Badge className="bg-primary/10 text-primary border-none font-black text-[10px] rounded-lg px-2 shadow-none">
-          {items.length} ITEMS
-        </Badge>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
-        {items.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-sm">
-            <ShoppingCart className="w-8 h-8 mb-2 opacity-30" />
-            <p>Cart is empty</p>
-            <p className="text-xs">Click items to add</p>
-          </div>
-        )}
-        {items.map((item) => (
-          <CartItem
-            key={item.id}
-            item={item}
-            onUpdateQuantity={updateQuantity}
-            onRemove={removeItem}
-            onUpdateNote={updateItemNote}
-            onUpdateExtra={updateItemExtraCharge}
-            isEditing={noteEditing.id === item.id}
-            editValue={noteEditing}
-            onStartEdit={onStartEdit}
-            onSaveEdit={onSaveEdit}
-            onCancelEdit={onCancelEdit}
-            onEditChange={onEditChange}
-          />
-        ))}
-        <div ref={cartEndRef} />
-      </div>
-
-      <div className="border-t bg-muted/5 p-3 space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 space-y-1">
-            <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Discount</label>
-            <div className="relative">
-              <Input
-                type="number"
-                min={0}
-                value={discount || ''}
-                onChange={(e) => setDiscount(Number(e.target.value) || 0)}
-                placeholder="0"
-                className="h-8 rounded-lg bg-white border-muted pr-6 text-xs"
-              />
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
-            </div>
-          </div>
-          {orderType === 'delivery' && (
-            <div className="flex-1 space-y-1">
-              <label className="text-[9px] font-bold text-primary uppercase tracking-widest pl-1">Delivery</label>
-              <div className="relative">
-                <Input
-                  type="number"
-                  min={0}
-                  value={deliveryCharge || ''}
-                  onChange={(e) => setDeliveryCharge(Number(e.target.value) || 0)}
-                  placeholder="0"
-                  className="h-8 rounded-lg bg-white border-primary/20 focus-visible:ring-primary/20 pr-6 text-xs font-bold"
-                />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
-              </div>
-            </div>
-          )}
-          <div className="flex-1 space-y-1">
-            <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Amount Paid</label>
-            <div className="relative">
-              <Input
-                type="number"
-                min={0}
-                value={amountPaid || ''}
-                onChange={(e) => setAmountPaid(Number(e.target.value) || 0)}
-                placeholder="0"
-                className="h-8 rounded-lg bg-white border-muted pr-6 text-xs font-bold text-primary"
-              />
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">Rs</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-1.5 p-1">
-          <div className="flex justify-between items-center text-[11px] font-medium">
-            <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Subtotal</span>
-            <span className="tabular-nums font-bold">Rs. {subtotal.toLocaleString()}</span>
-          </div>
-
-          {discount > 0 && (
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-destructive font-bold uppercase tracking-widest text-[9px]">Discount</span>
-              <span className="text-destructive tabular-nums font-bold">-Rs. {discount.toLocaleString()}</span>
-            </div>
-          )}
-
-          {tax > 0 && (
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Tax ({taxPercentage}%)</span>
-              <span className="text-muted-foreground tabular-nums font-bold">Rs. {tax.toLocaleString()}</span>
-            </div>
-          )}
-
-          {deliveryCharge > 0 && (
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-muted-foreground font-bold uppercase tracking-widest text-[9px]">Delivery</span>
-              <span className="text-muted-foreground tabular-nums font-bold">Rs. {deliveryCharge.toLocaleString()}</span>
-            </div>
-          )}
-
-          <div className="pt-2 border-t border-muted">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-black uppercase tracking-tighter">Net Payable</span>
-              <span className="text-xl font-black text-primary tabular-nums">Rs. {total.toLocaleString()}</span>
-            </div>
-          </div>
-
-          {amountPaid > 0 && amountPaid >= total && (
-            <div className="flex justify-between items-center py-1.5 px-3 bg-accent/10 rounded-lg border border-accent/20">
-              <span className="text-[9px] font-black text-accent uppercase tracking-widest">Return</span>
-              <span className="text-sm font-black text-accent tabular-nums">Rs. {(amountPaid - total).toLocaleString()}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-2 pt-2">
-          <Button
-            variant="outline"
-            className="flex-1 h-10 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-destructive/5 hover:text-destructive hover:border-destructive transition-all"
-            onClick={clearCart}
-            disabled={items.length === 0}
-          >
-            Clear
-          </Button>
-          <Button
-            className="flex-[2.5] h-10 rounded-xl premium-shadow font-bold text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all"
-            onClick={onPrintBill}
-            disabled={items.length === 0 || saving}
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <Printer className="w-4 h-4 mr-2" />
-                Complete order
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-const MenuItemComponent = React.memo(({ item, onAdd, getIcon }: { item: MenuItem; onAdd: (item: MenuItem) => void; getIcon: (cat: string) => string }) => {
-  return (
-    <div
-      className="bg-white border-transparent border-2 hover:border-primary/20 rounded-xl p-2 cursor-pointer premium-hover premium-shadow flex flex-col gap-2 group active:scale-95 transition-all"
-      onClick={() => onAdd(item)}
-    >
-      <div className="relative aspect-square rounded-lg overflow-hidden bg-muted/30">
-        {item.image_url ? (
-          <img src={item.image_url} alt={item.item_name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-3xl transition-all font-serif">
-            {getIcon(item.category)}
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60 cursor-pointer hover:text-primary italic p-1 rounded hover:bg-primary/5" onClick={() => onStartEdit(item)}>
+            <span className="truncate">{item.note || item.extraCharge ? `${item.note || ''} ${item.extraCharge ? '(+Rs.' + item.extraCharge + ')' : ''}` : "Add instructions..."}</span>
           </div>
         )}
-        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="bg-primary text-white p-1 rounded-md shadow-lg">
-            <Plus className="w-2.5 h-2.5" />
-          </div>
-        </div>
-      </div>
-      <div className="space-y-0.5">
-        <p className="font-bold text-[11px] tracking-tight leading-tight line-clamp-2 min-h-[1.5rem] group-hover:text-primary transition-colors">
-          {item.item_name}
-        </p>
-        <div className="flex items-center justify-between">
-          <span className="text-primary font-black text-[10px] tabular-nums">Rs. {Number(item.price).toLocaleString()}</span>
-        </div>
       </div>
     </div>
-  );
-});
-
-const CONFIG = {
-  USE_ATOMIC_V3: true, // Feature flag for hardened order creation
-};
+  </div>
+));
 
 const Billing = () => {
-  const queryClient = useQueryClient();
+  const { user, role, username } = useAuthStore(useShallow(s => ({ user: s.user, role: s.role, username: s.username })));
+  const { 
+    items, customerId, customerName, customerPhone, orderType, paymentMethod, amountPaid, deliveryCharge, discount,
+    subtotal, tax, total, taxPercentage,
+    addItem, removeItem, updateQuantity, updateItemNote, updateItemExtraCharge, 
+    setCustomerId, setCustomerName, setCustomerPhone, setOrderType, setPaymentMethod, setAmountPaid, setDeliveryCharge, setDiscount, setTaxConfig, clearCart 
+  } = useCartStore(useShallow(s => ({
+    items: s.items, customerId: s.customerId, customerName: s.customerName, customerPhone: s.customerPhone,
+    orderType: s.orderType, paymentMethod: s.paymentMethod, amountPaid: s.amountPaid, deliveryCharge: s.deliveryCharge, discount: s.discount,
+    subtotal: s.subtotal, tax: s.tax, total: s.total, taxPercentage: s.taxPercentage,
+    addItem: s.addItem, removeItem: s.removeItem, updateQuantity: s.updateQuantity, updateItemNote: s.updateItemNote, updateItemExtraCharge: s.updateItemExtraCharge,
+    setCustomerId: s.setCustomerId, setCustomerName: s.setCustomerName, setCustomerPhone: s.setCustomerPhone, setOrderType: s.setOrderType,
+    setPaymentMethod: s.setPaymentMethod, setAmountPaid: s.setAmountPaid, setDeliveryCharge: s.setDeliveryCharge, setDiscount: s.setDiscount,
+    setTaxConfig: s.setTaxConfig, clearCart: s.clearCart
+  })));
 
-  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const { menuItems, categories, settings, overview, refetchOverview } = useBillingData();
+  const { pendingSync } = useOfflineSync(refetchOverview);
+  
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState('all');
   const [lastBill, setLastBill] = useState<any>(null);
-  const [pendingSync, setPendingSync] = useState(0);
   const [storeSettings, setStoreSettings] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const [noteEditing, setNoteEditing] = useState<{ id: string | null; note: string; extra: number }>({
-    id: null,
-    note: '',
-    extra: 0,
-  });
+  const [noteEditing, setNoteEditing] = useState<{ id: string | null; note: string; extra: number }>({ id: null, note: '', extra: 0 });
   const [pendingPrintId, setPendingPrintId] = useState<string | null>(null);
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+
   const receiptRef = useRef<HTMLDivElement>(null);
   const kotRef = useRef<HTMLDivElement>(null);
-  const cartEndRef = useRef<HTMLDivElement>(null);
 
-  const cartItems = useCartStore(s => s.items);
-  const cartCustomerId = useCartStore(s => s.customerId);
-  const cartCustomerName = useCartStore(s => s.customerName);
-  const cartCustomerPhone = useCartStore(s => s.customerPhone);
-  const cartOrderType = useCartStore(s => s.orderType);
-  const cartDiscount = useCartStore(s => s.discount);
-  const cartPaymentMethod = useCartStore(s => s.paymentMethod);
-  const cartAmountPaid = useCartStore(s => s.amountPaid);
-  const cartDeliveryCharge = useCartStore(s => s.deliveryCharge);
-  
-  const addItem = useCartStore(s => s.addItem);
-  const removeItem = useCartStore(s => s.removeItem);
-  const updateQuantity = useCartStore(s => s.updateQuantity);
-  const updateItemNote = useCartStore(s => s.updateItemNote);
-  const updateItemExtraCharge = useCartStore(s => s.updateItemExtraCharge);
-  const setCustomerName = useCartStore(s => s.setCustomerName);
-  const setCustomerPhone = useCartStore(s => s.setCustomerPhone);
-  const setOrderType = useCartStore(s => s.setOrderType);
-  const setDiscount = useCartStore(s => s.setDiscount);
-  const setPaymentMethod = useCartStore(s => s.setPaymentMethod);
-  const setAmountPaid = useCartStore(s => s.setAmountPaid);
-  const setDeliveryCharge = useCartStore(s => s.setDeliveryCharge);
-  const clearCart = useCartStore(s => s.clearCart);
-  const setTaxConfig = useCartStore(s => s.setTaxConfig);
-  const getSubtotal = useCartStore(s => s.getSubtotal);
-  const getTax = useCartStore(s => s.getTax);
-  const getTotal = useCartStore(s => s.getTotal);
-  const taxEnabled = useCartStore(s => s.taxEnabled);
-  const taxPercentage = useCartStore(s => s.taxPercentage);
-  const { user } = useAuthStore();
+  useEffect(() => {
+    const isWeak = /Windows NT 6.3/i.test(navigator.userAgent) || (navigator.hardwareConcurrency || 4) < 4;
+    if (isWeak) document.body.classList.add('lite-mode');
+  }, []);
 
   const handlePrintKOT = useReactToPrint({
-    // @ts-ignore
     content: () => kotRef.current,
+    removeAfterPrint: true,
     onAfterPrint: () => {
-      toast.success("Order Processed: Bill & KOT Printed");
+      setIsPrinting(false);
+      toast.success("Order Processed Successfully");
       clearCart();
       refetchOverview();
     }
   });
 
   const handlePrint = useReactToPrint({
-    // @ts-ignore
     content: () => receiptRef.current,
+    removeAfterPrint: true,
     onAfterPrint: () => {
-      setTimeout(() => {
-        handlePrintKOT();
-      }, 500);
+      setTimeout(() => handlePrintKOT(), 500);
     }
   });
 
   useEffect(() => {
     if (lastBill && lastBill.id === pendingPrintId) {
       setPendingPrintId(null);
-      handlePrint();
+      setIsPrinting(true);
+      setTimeout(() => handlePrint(), 100);
     }
   }, [lastBill, pendingPrintId, handlePrint]);
 
-  // Optimized Fetching with useCachedQuery
-  const { data: menuItems = [] } = useCachedQuery(
-    queryKeys.menu,
-    () => db.getMenuItems(),
-    { 
-      persistKey: 'menu',
-      select: (data: any[]) => data.filter(item => item.is_available),
-      staleTime: Infinity,
-    }
-  );
-
-  const { data: categories = [] } = useCachedQuery(
-    queryKeys.categories,
-    () => db.getCategories(),
-    { persistKey: 'categories', staleTime: Infinity }
-  );
-
-  const { data: settings = [] } = useCachedQuery(
-    queryKeys.settings,
-    () => db.getSettings(),
-    { 
-      persistKey: 'settings',
-      staleTime: Infinity, // Beast Mode: Never refetch automatically
-    }
-  );
-
-  useEffect(() => {
-    if (settings && settings.length > 0) {
-      const enabled = settings.find((s: any) => s.setting_key === 'tax_enabled')?.setting_value === 'true';
-      const percent = parseFloat(settings.find((s: any) => s.setting_key === 'tax_percentage')?.setting_value || '0');
-      
-      // Only update if changed to avoid infinite loop
-      if (enabled !== taxEnabled || percent !== taxPercentage) {
-        setTaxConfig(enabled, percent);
-      }
-
-      const settingsMap = settings.reduce((acc: any, s: any) => ({ ...acc, [s.setting_key]: s.setting_value }), {});
-      setStoreSettings(settingsMap || {});
-    }
-  }, [settings, setTaxConfig, taxEnabled, taxPercentage]);
-
-  // Today's Overview Query
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const { data: overview = { revenue: 0, expenses: 0, totalKhata: 0 }, refetch: refetchOverview } = useQuery({
-    queryKey: ['today_overview', today],
-    queryFn: async () => {
-      const [revRes, expRes, khataRes] = await Promise.all([
-        supabase.from('bills').select('total').gte('created_at', `${today}T00:00:00`).lte('created_at', `${today}T23:59:59`),
-        supabase.from('expenses').select('amount').eq('date', today),
-        supabase.from('customers').select('current_balance'),
-      ]);
-      return {
-        revenue: ((revRes.data || []) as { total: number }[]).reduce((s, b) => s + Number(b.total), 0),
-        expenses: ((expRes.data || []) as { amount: number }[]).reduce((s, e) => s + Number(e.amount), 0),
-        totalKhata: ((khataRes.data || []) as { current_balance: number }[]).reduce((s, c) => s + Number(c.current_balance), 0)
-      };
-    },
-    staleTime: 5 * 60 * 1000, // Beast Mode: 5 minutes cache for dashboard
-  });
-
-  // Offline Sync Logic
-  useEffect(() => {
-    const syncOfflineOrders = async () => {
-      if (!navigator.onLine) return;
-      
-      const queued = await getQueuedOrders();
-      if (queued.length === 0) return;
-      
-      setPendingSync(queued.length);
-      console.log(`[Offline] 🔄 Syncing ${queued.length} orders...`);
-      
-      for (const order of queued) {
-        try {
-          const { data, error } = await (supabase as any).rpc('create_order_atomic_v4', order.payload);
-          if (!error && data?.success) {
-            await removeQueuedOrder(order.id);
-            console.log(`[Offline] ✅ Order synced: ${order.id}`);
-          }
-        } catch (e) {
-          console.error(`[Offline] ❌ Failed to sync order ${order.id}:`, e);
-        }
-      }
-      
-      const remaining = await getQueuedOrders();
-      setPendingSync(remaining.length);
-      if (remaining.length === 0) {
-        refetchOverview();
-      }
-    };
-
-    window.addEventListener('online', syncOfflineOrders);
-    syncOfflineOrders();
-    
-    return () => window.removeEventListener('online', syncOfflineOrders);
-  }, [refetchOverview]);
-
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(handler);
   }, [search]);
 
-  const filteredItems = useMemo(() => {
-    return menuItems.filter((item) => {
-      const matchesCategory = activeCategory === 'all' || item.category === activeCategory;
-      const matchesSearch = item.item_name.toLowerCase().includes(debouncedSearch.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [menuItems, activeCategory, debouncedSearch]);
-
-  const cartSubtotal = useMemo(() => getSubtotal(), [cartItems]);
-  const cartTax = useMemo(() => getTax(), [cartItems]);
-  const cartTotal = useMemo(() => getTotal(), [cartItems, cartDiscount, cartDeliveryCharge]);
-
-  const orderMutation = useMutation({
-    mutationFn: async (payload: any) => {
-      // @ts-ignore
-      const { data, error } = await (supabase as any).rpc('create_order_atomic_v4', payload);
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data: any) => {
-      if (data.is_duplicate) {
-        toast.info(`Order #${data.bill_number} already processed`);
-      } else {
-        toast.success(`Order #${data.bill_number} Processed`);
-      }
-
-      setLastBill({
-        id: data.bill_id,
-        bill_number: data.bill_number,
-        customer_name: cartCustomerName,
-        customer_phone: cartCustomerPhone,
-        order_type: cartOrderType,
-        payment_method: cartPaymentMethod,
-        amount_paid: cartAmountPaid || data.total,
-        subtotal: data.subtotal,
-        discount: cartDiscount,
-        tax: data.tax,
-        total: data.total,
-        delivery_charge: cartDeliveryCharge,
-        change_returned: data.change_returned,
-        items: cartItems.map(i => ({ ...i, item_name: i.name })),
-        created_at: data.created_at || new Date().toISOString()
-      });
-
-      clearCart();
-      setPendingPrintId(data.bill_id);
-      refetchOverview();
-    },
-    onError: async (error: any, payload: any) => {
-      console.error("Order Creation Error:", error);
-      
-      // If offline or fetch error, queue locally
-      if (!navigator.onLine || error.message?.includes('fetch')) {
-        await queueOrder(payload);
-        toast.warning("Network issue. Order queued locally.");
-        clearCart();
-        const queued = await getQueuedOrders();
-        setPendingSync(queued.length);
-      } else {
-        toast.error(error.message || 'Order failed');
-      }
-    },
-    onSettled: () => {
-      setSaving(false);
+  useEffect(() => {
+    if (settings?.length) {
+      const enabled = settings.find((s: any) => s.setting_key === 'tax_enabled')?.setting_value === 'true';
+      const percent = parseFloat(settings.find((s: any) => s.setting_key === 'tax_percentage')?.setting_value || '0');
+      if (enabled !== useCartStore.getState().taxEnabled || percent !== useCartStore.getState().taxPercentage) setTaxConfig(enabled, percent);
+      setStoreSettings(settings.reduce((acc: any, s: any) => ({ ...acc, [s.setting_key]: s.setting_value }), {}));
     }
+  }, [settings, setTaxConfig]);
+
+  const { orderMutation, saving } = useOrderProcessing((data: any) => {
+    setLastBill({
+      id: data.bill_id, bill_number: data.bill_number, customer_name: customerName, customer_phone: customerPhone,
+      order_type: orderType, payment_method: paymentMethod, amount_paid: amountPaid || data.total,
+      subtotal: data.subtotal, discount: discount, tax: data.tax, total: data.total, delivery_charge: deliveryCharge,
+      items: items.map(i => ({ ...i, item_name: i.name })), created_at: data.created_at || new Date().toISOString()
+    });
+    setPendingPrintId(data.bill_id);
   });
 
-  const handlePrintBill = useCallback(async () => {
-    if (cartItems.length === 0 || saving) return;
+  const filteredItems = useMemo(() => menuItems.filter((item: any) => (activeCategory === 'all' || item.category === activeCategory) && item.item_name.toLowerCase().includes(debouncedSearch.toLowerCase())), [menuItems, activeCategory, debouncedSearch]);
 
-    setSaving(true);
-    const idempotencyKey = crypto.randomUUID();
+  const handlePrintBill = useCallback(() => {
+    if (!items.length || saving) return;
+    orderMutation.mutate({
+      p_idempotency_key: crypto.randomUUID(), p_customer_id: customerId || null, p_customer_name: customerName || null,
+      p_customer_phone: customerPhone || null, p_order_type: orderType, p_discount: discount, p_tax_rate: taxPercentage / 100,
+      p_payment_method: paymentMethod, p_amount_paid: amountPaid || 0, p_delivery_charge: deliveryCharge || 0,
+      p_created_by: user?.id, p_items: items.map(item => ({ id: item.id, item_name: item.name, quantity: item.quantity, unit_price: item.unitPrice }))
+    });
+  }, [items, customerId, customerName, customerPhone, orderType, discount, taxPercentage, paymentMethod, amountPaid, deliveryCharge, user?.id, saving, orderMutation]);
 
-    const orderPayload = {
-      p_idempotency_key: idempotencyKey,
-      p_customer_id: cartCustomerId || null,
-      p_customer_name: cartCustomerName || null,
-      p_customer_phone: cartCustomerPhone || null,
-      p_order_type: cartOrderType,
-      p_discount: cartDiscount,
-      p_tax_rate: taxPercentage / 100,
-      p_payment_method: cartPaymentMethod,
-      p_amount_paid: cartAmountPaid || 0,
-      p_delivery_charge: cartDeliveryCharge || 0,
-      p_created_by: user?.id,
-      p_items: cartItems.map(item => ({
-        item_name: item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-      }))
-    };
-
-    orderMutation.mutate(orderPayload);
-  }, [cartItems, cartCustomerName, cartCustomerPhone, cartOrderType, cartDiscount, taxPercentage, cartPaymentMethod, cartAmountPaid, cartDeliveryCharge, user?.id, saving, orderMutation]);
-
-  const handleAddItem = useCallback((item: MenuItem) => {
-    const start = performance.now();
-    const existing = cartItems.find(i => i.id === item.id);
-
-    addItem({ id: item.id, name: item.item_name, price: Number(item.price) });
-
-    if (existing) {
-      toast.info(`${item.item_name} quantity increased to ${existing.quantity + 1}`, {
-        icon: '➕',
-        duration: 1500,
-      });
-    } else {
-      toast.success(`${item.item_name} added to cart`, {
-        icon: '🛒',
-        duration: 1500,
-      });
-    }
-
-    const end = performance.now();
-    if (end - start > 10) console.warn(`Slow cart addition: ${(end - start).toFixed(2)}ms`);
-  }, [addItem, cartItems]);
-
-  const handleUpdateQuantity = useCallback((id: string, q: number) => updateQuantity(id, q), [updateQuantity]);
-  const handleRemoveItem = useCallback((id: string) => removeItem(id), [removeItem]);
-  const handleUpdateNote = useCallback((id: string, n: string) => updateItemNote(id, n), [updateItemNote]);
-  const handleUpdateExtra = useCallback((id: string, e: number) => updateItemExtraCharge(id, e), [updateItemExtraCharge]);
-
-  const handleStartEdit = useCallback((item: any) => setNoteEditing({ id: item.id, note: item.note || '', extra: item.extraCharge || 0 }), []);
-  const handleSaveEdit = useCallback(() => {
-    if (noteEditing.id) {
-      updateItemNote(noteEditing.id, noteEditing.note);
-      updateItemExtraCharge(noteEditing.id, noteEditing.extra);
-      setNoteEditing({ id: null, note: '', extra: 0 });
-    }
-  }, [noteEditing, updateItemNote, updateItemExtraCharge]);
-  const handleCancelEdit = useCallback(() => setNoteEditing({ id: null, note: '', extra: 0 }), []);
-  const handleEditChange = useCallback((field: string, val: any) => setNoteEditing(prev => ({ ...prev, [field]: val })), []);
-
-  const getCategoryIcon = useMemo(() => (category: string) => {
+  const getCategoryIcon = (category: string) => {
     const cat = category.toLowerCase();
-    if (cat.includes('burger') || cat.includes('fast')) return '🍔';
+    if (cat.includes('burger')) return '🍔';
     if (cat.includes('pizza')) return '🍕';
-    if (cat.includes('drink') || cat.includes('beverage') || cat.includes('cold') || cat.includes('juice')) return '🥤';
-    if (cat.includes('chicken') || cat.includes('tikka') || cat.includes('karahi') || cat.includes('meat')) return '🍗';
-    if (cat.includes('rice') || cat.includes('biryani') || cat.includes('pulao')) return '🍚';
-    if (cat.includes('roti') || cat.includes('naan') || cat.includes('bread')) return '🫓';
-    if (cat.includes('dessert') || cat.includes('sweet') || cat.includes('cake') || cat.includes('ice')) return '🍰';
-    if (cat.includes('tea') || cat.includes('coffee') || cat.includes('hot')) return '☕';
-    if (cat.includes('fries') || cat.includes('side') || cat.includes('snack')) return '🍟';
-    if (cat.includes('deal') || cat.includes('combo')) return '🍱';
+    if (cat.includes('drink')) return '🥤';
+    if (cat.includes('chicken')) return '🍗';
     return '🍽️';
-  }, []);
+  };
+
+  const { data: customers = [] } = useQuery({ queryKey: ['customers'], queryFn: () => db.getCustomers() });
 
   return (
     <div className="h-screen flex flex-col bg-[#fafafa]">
-      {/* Today's Overview Bar */}
-      <TodayOverviewBar 
-        todayRevenue={overview.revenue} 
-        todayExpenses={overview.expenses} 
-        totalKhata={overview.totalKhata}
-        pendingSync={pendingSync} 
-      />
-
-      {/* Customer Info Bar */}
-      <CustomerInfoBar />
-
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Menu Section */}
-        <MenuSection
-          categories={categories}
-          activeCategory={activeCategory}
-          setActiveCategory={setActiveCategory}
-          search={search}
-          setSearch={setSearch}
-          filteredItems={filteredItems}
-          onAddItem={handleAddItem}
-          getCategoryIcon={getCategoryIcon}
-        />
-
-        {/* Cart Section */}
-        <CartSection
-          saving={saving}
-          onPrintBill={handlePrintBill}
-          onStartEdit={handleStartEdit}
-          noteEditing={noteEditing}
-          onSaveEdit={handleSaveEdit}
-          onCancelEdit={handleCancelEdit}
-          onEditChange={handleEditChange}
-          cartEndRef={cartEndRef}
-        />
+      <TodayOverviewBar todayRevenue={overview.revenue} todayExpenses={overview.expenses} totalKhata={overview.totalKhata} pendingSync={pendingSync} username={username} role={role} />
+      
+      <div className="bg-white border-b px-6 py-4 grid grid-cols-4 gap-4 items-end">
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Customer</label>
+          <Popover open={customerOpen} onOpenChange={setCustomerOpen}>
+            <PopoverTrigger asChild><Button variant="outline" className="w-full h-10 justify-between">{customerName || "Walk-in Customer"}<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" /></Button></PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0"><Command><CommandInput placeholder="Search..." /><CommandList><CommandEmpty className="p-4 text-xs">No customer found.</CommandEmpty><CommandGroup>
+              <CommandItem onSelect={() => { setCustomerId(''); setCustomerName(''); setCustomerPhone(''); setCustomerOpen(false); }} className="text-xs font-bold"><Check className={cn("mr-2 h-4 w-4", !customerId ? "opacity-100" : "opacity-0")} />Walk-in Customer</CommandItem>
+              {customers.map((c: any) => (
+                <CommandItem key={c.id} onSelect={() => { setCustomerId(c.id); setCustomerName(c.name); setCustomerPhone(c.phone || ''); setCustomerOpen(false); }} className="flex flex-col items-start gap-0.5">
+                  <div className="flex items-center justify-between w-full"><span className="font-bold">{c.name}</span>{c.current_balance > 0 && <Badge variant="destructive" className="text-[9px]">Owes Rs. {c.current_balance}</Badge>}</div>
+                  <span className="text-[10px] text-muted-foreground">{c.phone || 'No phone'}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup></CommandList></Command></PopoverContent>
+          </Popover>
+        </div>
+        <div className="space-y-1.5"><label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Phone</label><Input placeholder="03xx xxxxxxx" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="h-10" disabled={!!customerId} /></div>
+        <div className="space-y-1.5"><label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Type</label><Select value={orderType} onValueChange={setOrderType}><SelectTrigger className="h-10 capitalize"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="dine-in">Dine In</SelectItem><SelectItem value="takeaway">Takeaway</SelectItem><SelectItem value="delivery">Delivery</SelectItem></SelectContent></Select></div>
+        <div className="space-y-1.5"><label className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-widest pl-1">Payment</label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger className={cn("h-10 capitalize", paymentMethod === 'credit' && "bg-destructive/5 text-destructive")}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="mobile">Mobile Payment</SelectItem><SelectItem value="credit" className="font-bold text-destructive">Khata / Loan</SelectItem></SelectContent></Select></div>
       </div>
 
-      {/* OFF-SCREEN PRINT COMPONENTS (Always Mounted for Ref Stability) */}
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden border-r">
+          <div className="p-4 border-b bg-muted/5"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" /><Input placeholder="Search meal..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10 h-10 rounded-xl" /></div></div>
+          <div className="px-4 py-2 border-b bg-white flex gap-1.5 overflow-x-auto scrollbar-thin">
+            <button className={cn("whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase border", activeCategory === 'all' ? 'bg-primary text-white' : 'bg-white text-muted-foreground')} onClick={() => setActiveCategory('all')}>All</button>
+            {categories.map((cat: any) => (<button key={cat.id} className={cn("whitespace-nowrap px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase border", activeCategory === cat.category_name ? 'bg-primary text-white' : 'bg-white text-muted-foreground')} onClick={() => setActiveCategory(cat.category_name)}>{cat.category_name}</button>))}
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 scrollbar-thin"><div className="pos-grid">{filteredItems.map((item: any) => (<MenuItemComponent key={item.id} item={item} onAdd={addItem} getIcon={getCategoryIcon} />))}</div></div>
+        </div>
+
+        <div className="w-[390px] flex flex-col bg-white border-l shrink-0 shadow-[-10px_0_30px_rgba(0,0,0,0.02)]">
+          <div className="px-5 py-4 border-b flex items-center justify-between"><div className="flex items-center gap-2.5"><div className="p-2 bg-primary/10 rounded-xl"><ShoppingCart className="w-4 h-4 text-primary" /></div><div><h2 className="font-black text-sm uppercase tracking-tighter">Current Order</h2><p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none">Terminal ACTIVE</p></div></div><Badge className="bg-primary/10 text-primary border-none font-black text-[10px]">{items.length} ITEMS</Badge></div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
+            {items.map((item) => (<CartItem key={item.id} item={item} onUpdateQuantity={updateQuantity} onRemove={removeItem} isEditing={noteEditing.id === item.id} editValue={noteEditing} onStartEdit={(i:any) => setNoteEditing({ id: i.id, note: i.note || '', extra: i.extraCharge || 0 })} onSaveEdit={() => { updateItemNote(noteEditing.id!, noteEditing.note); updateItemExtraCharge(noteEditing.id!, noteEditing.extra); setNoteEditing({ id: null, note: '', extra: 0 }); }} onEditChange={(f:any, v:any) => setNoteEditing(p => ({ ...p, [f]: v }))} />))}
+          </div>
+          <div className="border-t bg-muted/5 p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="flex-1 space-y-1"><label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Discount</label><Input type="number" value={discount || ''} onChange={(e) => setDiscount(Number(e.target.value) || 0)} className="h-8" /></div>
+              {orderType === 'delivery' && <div className="flex-1 space-y-1"><label className="text-[9px] font-bold text-primary uppercase tracking-widest pl-1">Delivery</label><Input type="number" value={deliveryCharge || ''} onChange={(e) => setDeliveryCharge(Number(e.target.value) || 0)} className="h-8" /></div>}
+              <div className="flex-1 space-y-1"><label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest pl-1">Paid</label><Input type="number" value={amountPaid || ''} onChange={(e) => setAmountPaid(Number(e.target.value) || 0)} className="h-8 font-bold text-primary" /></div>
+            </div>
+            <div className="space-y-1.5 p-1">
+              <div className="flex justify-between items-center text-[11px] font-medium"><span className="text-muted-foreground uppercase tracking-widest text-[9px]">Subtotal</span><span className="font-bold">Rs. {subtotal.toLocaleString()}</span></div>
+              {discount > 0 && <div className="flex justify-between items-center text-[11px]"><span className="text-destructive uppercase tracking-widest text-[9px]">Discount</span><span className="text-destructive font-bold">-Rs. {discount.toLocaleString()}</span></div>}
+              {tax > 0 && <div className="flex justify-between items-center text-[11px]"><span className="text-muted-foreground uppercase tracking-widest text-[9px]">Tax ({taxPercentage}%)</span><span className="font-bold">Rs. {tax.toLocaleString()}</span></div>}
+              <div className="pt-2 border-t border-muted"><div className="flex justify-between items-center"><span className="text-sm font-black uppercase tracking-tighter">Net Payable</span><span className="text-xl font-black text-primary">Rs. {total.toLocaleString()}</span></div></div>
+              {amountPaid >= total && amountPaid > 0 && <div className="flex justify-between items-center py-1.5 px-3 bg-accent/10 rounded-lg"><span className="text-[9px] font-black text-accent uppercase tracking-widest">Return</span><span className="text-sm font-black text-accent">Rs. {(amountPaid - total).toLocaleString()}</span></div>}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" className="flex-1 h-10 rounded-xl" onClick={clearCart} disabled={!items.length}>Clear</Button>
+              <Button className="flex-[2.5] h-10 rounded-xl premium-shadow font-bold text-xs" onClick={handlePrintBill} disabled={!items.length || saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Printer className="w-4 h-4 mr-2" />Complete order</>}</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="print-container-hidden" aria-hidden="true">
         <ErrorBoundary>
-          <Receipt ref={receiptRef} bill={lastBill} settings={storeSettings} />
-          <KOT ref={kotRef} bill={lastBill} settings={storeSettings} />
+          {isPrinting && lastBill && (
+            <>
+              <Receipt ref={receiptRef} bill={lastBill} settings={storeSettings} />
+              <KOT ref={kotRef} bill={lastBill} settings={storeSettings} />
+            </>
+          )}
         </ErrorBoundary>
       </div>
     </div>
